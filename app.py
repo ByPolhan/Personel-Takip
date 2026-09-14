@@ -4,6 +4,11 @@ import pandas as pd
 import hashlib
 import datetime
 import io
+import matplotlib.pyplot as plt
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.enum.text import PP_ALIGN
+from pptx.dml.color import RGBColor
 
 # ==========================================
 # 1. SAYFA YAPILANDIRMASI VE SABİTLER
@@ -41,6 +46,15 @@ ROLLER = [
     "Bölük Yetkilisi",
     "Tim Komutanı"
 ]
+
+# Yardimci Fonksiyon: Saniyeyi Dk:Sn formatina donusturur
+def format_kosu_saniye(saniye):
+    if pd.isna(saniye) or saniye is None or saniye == 0:
+        return "-"
+    saniye = int(saniye)
+    dk = saniye // 60
+    sn = saniye % 60
+    return f"{dk:02d}:{sn:02d}"
 
 # ==========================================
 # 2. VERİTABANI İŞLEMLERİ (SQLite)
@@ -87,12 +101,18 @@ def init_db():
                     sinav INTEGER,
                     mekik INTEGER,
                     barfiks INTEGER,
-                    kosu_3000m REAL,
+                    kosu_3000m_sn INTEGER,
                     yazili_sinav REAL,
                     kaydeden TEXT,
                     FOREIGN KEY(personel_id) REFERENCES personel(id)
                 )''')
     
+    # Eski veritabani kolon guncelleme kontrolu
+    c.execute("PRAGMA table_info(performans)")
+    cols = [col[1] for col in c.fetchall()]
+    if "kosu_3000m" in cols and "kosu_3000m_sn" not in cols:
+        c.execute("ALTER TABLE performans RENAME COLUMN kosu_3000m TO kosu_3000m_sn")
+
     c.execute("SELECT * FROM kullanicilar WHERE kullanici_adi = 'admin'")
     if not c.fetchone():
         admin_pass = make_hashes("admin123")
@@ -188,11 +208,16 @@ with st.sidebar.expander("🔑 Şifremi Değiştir"):
 
 st.sidebar.divider()
 
-menu_options = [
-    "📊 Tabur Performans Dashboard",
-    "📝 Veri Girişi",
-    "👤 Personel Yönetimi"
-]
+# ROL BAZLI MENÜ BİLEŞENİ
+menu_options = []
+
+if role in ["Admin", "Destek Takım Komutanı", "Bölük Yetkilisi", "Tim Komutanı"]:
+    menu_options.append("📊 Tabur Performans Dashboard")
+
+menu_options.append("📝 Veri Girişi")
+
+if role in ["Admin", "Destek Takım Komutanı", "Bölük Yetkilisi", "Tim Komutanı"]:
+    menu_options.append("👤 Personel Yönetimi")
 
 if role in ["Admin", "Reporter"]:
     menu_options.append("📄 Sunum ve Rapor Alma")
@@ -216,7 +241,7 @@ if choice == "📊 Tabur Performans Dashboard":
     conn = get_db()
     query = '''
         SELECT p.tarih, p.periyot, per.sicil_no, per.ad_soyad, per.birlik, per.tim,
-               p.sinav, p.mekik, p.barfiks, p.kosu_3000m, p.yazili_sinav
+               p.sinav, p.mekik, p.barfiks, p.kosu_3000m_sn, p.yazili_sinav
         FROM performans p
         JOIN personel per ON p.personel_id = per.id
     '''
@@ -249,7 +274,9 @@ if choice == "📊 Tabur Performans Dashboard":
         m1.metric("Şınav (Ort.)", f"{df['sinav'].mean():.1f}")
         m2.metric("Mekik (Ort.)", f"{df['mekik'].mean():.1f}")
         m3.metric("Barfiks (Ort.)", f"{df['barfiks'].mean():.1f}")
-        m4.metric("3000m Koşu (Ort.)", f"{df['kosu_3000m'].mean():.2f}")
+        
+        avg_kosu_sn = df['kosu_3000m_sn'].dropna().mean() if not df['kosu_3000m_sn'].dropna().empty else 0
+        m4.metric("3000m Koşu (Ort.)", format_kosu_saniye(avg_kosu_sn))
         m5.metric("Yazılı Sınav (Ort.)", f"{df['yazili_sinav'].mean():.1f}")
 
         st.divider()
@@ -261,8 +288,8 @@ if choice == "📊 Tabur Performans Dashboard":
             st.bar_chart(boluk_grp)
 
         with col_g2:
-            st.subheader("🏃‍♂️ Bölük Bazlı 3000m Koşu Dereceleri")
-            kosu_grp = df.groupby("birlik")["kosu_3000m"].mean()
+            st.subheader("🏃‍♂️ Bölük Bazlı 3000m Koşu Ortalamaları (Saniye)")
+            kosu_grp = df.groupby("birlik")["kosu_3000m_sn"].mean()
             st.bar_chart(kosu_grp)
 
         st.subheader("🎖️ En Yüksek Başarı Gösteren İlk 10 Personel")
@@ -271,10 +298,12 @@ if choice == "📊 Tabur Performans Dashboard":
             df["mekik"].fillna(0) + 
             (df["barfiks"].fillna(0) * 2) + 
             df["yazili_sinav"].fillna(0) - 
-            (df["kosu_3000m"].fillna(0) * 2)
+            (df["kosu_3000m_sn"].fillna(1200) / 10)
         )
-        top10 = df.sort_values(by="Genel_Skor", ascending=False).head(10)
-        st.dataframe(top10[["ad_soyad", "birlik", "tim", "sinav", "mekik", "barfiks", "kosu_3000m", "yazili_sinav"]], use_container_width=True)
+        top10 = df.sort_values(by="Genel_Skor", ascending=False).head(10).copy()
+        top10["3000m Koşu"] = top10["kosu_3000m_sn"].apply(format_kosu_saniye)
+        
+        st.dataframe(top10[["ad_soyad", "birlik", "tim", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
 
 # ==========================================
 # MENÜ 2: VERİ GİRİŞİ
@@ -284,6 +313,7 @@ elif choice == "📝 Veri Girişi":
 
     conn = get_db()
     
+    # Reporter ve Admin tum birliklere veri girebilir
     if role in ["Admin", "Reporter"]:
         allowed_birlikler = BIRLIK_LISTESI
     elif role == "Destek Takım Komutanı":
@@ -301,7 +331,9 @@ elif choice == "📝 Veri Girişi":
             secilen_tim = "-"
             st.info("💡 Bu birlikte tim seçimi yoktur.")
         else:
-            if role == "Tim Komutanı":
+            if role in ["Admin", "Reporter"]:
+                allowed_timler = TIM_LISTESI
+            elif role == "Tim Komutanı":
                 allowed_timler = [user["tim"]]
             else:
                 allowed_timler = TIM_LISTESI
@@ -318,7 +350,7 @@ elif choice == "📝 Veri Girişi":
                                         conn, params=(secilen_birlik, secilen_tim))
     
     if personel_df.empty:
-        st.warning("Seçilen birlikte kayıtlı personel bulunamadı. Lütfen önce Personel Yönetimi menüsünden personel ekleyin.")
+        st.warning("Seçilen birlikte kayıtlı personel bulunamadı.")
     else:
         secilen_personel_id = st.selectbox("Personel Seçin", 
                                            options=personel_df["id"].tolist(), 
@@ -345,17 +377,27 @@ elif choice == "📝 Veri Girişi":
                 with k_col2:
                     kosu_sn = st.number_input("Saniye (0-59)", min_value=0, max_value=59, value=0, key="spor_kosu_sn")
                 
-                # Saniye hesabı (örn: 14 dk 30 sn -> 14.30 float formatted)
-                kosu = float(f"{kosu_dk}.{kosu_sn:02d}")
+                toplam_kosu_saniye = (kosu_dk * 60) + kosu_sn
 
             if st.button("Spor Testini Kaydet", type="primary", key="btn_spor"):
                 cur = conn.cursor()
-                cur.execute('''INSERT INTO performans 
-                              (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m, yazili_sinav, kaydeden)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                           (secilen_personel_id, str(spor_tarih), secilen_periyot, sinav, mekik, barfiks, kosu, None, user["username"]))
+                # Mevcut kayit var mi kontrolu (UPSERT mantigi)
+                cur.execute("SELECT id FROM performans WHERE personel_id=? AND tarih=? AND periyot=?",
+                            (secilen_personel_id, str(spor_tarih), secilen_periyot))
+                existing = cur.fetchone()
+                
+                if existing:
+                    cur.execute('''UPDATE performans 
+                                   SET sinav=?, mekik=?, barfiks=?, kosu_3000m_sn=?, kaydeden=?
+                                   WHERE id=?''',
+                                (sinav, mekik, barfiks, toplam_kosu_saniye, user["username"], existing[0]))
+                else:
+                    cur.execute('''INSERT INTO performans 
+                                  (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m_sn, yazili_sinav, kaydeden)
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                               (secilen_personel_id, str(spor_tarih), secilen_periyot, sinav, mekik, barfiks, toplam_kosu_saniye, None, user["username"]))
                 conn.commit()
-                st.success(f"Spor testi verileri ({kosu_dk} dk {kosu_sn} sn) başarıyla kaydedildi!")
+                st.success(f"Spor testi verileri ({kosu_dk:02d}:{kosu_sn:02d}) başarıyla kaydedildi/güncellendi!")
 
         with tab_yazili:
             st.subheader("📝 Yazılı Sınav Notu Girişi")
@@ -364,12 +406,22 @@ elif choice == "📝 Veri Girişi":
 
             if st.button("Yazılı Sınav Notunu Kaydet", type="primary", key="btn_yazili"):
                 cur = conn.cursor()
-                cur.execute('''INSERT INTO performans 
-                              (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m, yazili_sinav, kaydeden)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                           (secilen_personel_id, str(yazili_tarih), secilen_periyot, None, None, None, None, yazili, user["username"]))
+                cur.execute("SELECT id FROM performans WHERE personel_id=? AND tarih=? AND periyot=?",
+                            (secilen_personel_id, str(yazili_tarih), secilen_periyot))
+                existing = cur.fetchone()
+                
+                if existing:
+                    cur.execute('''UPDATE performans 
+                                   SET yazili_sinav=?, kaydeden=?
+                                   WHERE id=?''',
+                                (yazili, user["username"], existing[0]))
+                else:
+                    cur.execute('''INSERT INTO performans 
+                                  (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m_sn, yazili_sinav, kaydeden)
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                               (secilen_personel_id, str(yazili_tarih), secilen_periyot, None, None, None, None, yazili, user["username"]))
                 conn.commit()
-                st.success("Yazılı sınav notu başarıyla kaydedildi!")
+                st.success("Yazılı sınav notu başarıyla kaydedildi/güncellendi!")
     
     conn.close()
 
@@ -521,7 +573,6 @@ elif choice == "👤 Personel Yönetimi":
                 
                 target_p = all_p_df[all_p_df['id'] == edit_p_id].iloc[0]
                 
-                # Dinamik keyler ile Streamlit session state kitlenmesi engellendi
                 col_e1, col_e2 = st.columns(2)
                 with col_e1:
                     edit_pbik = st.text_input("PBİK", value=str(target_p['sicil_no']), key=f"e_pbik_{edit_p_id}")
@@ -554,10 +605,16 @@ elif choice == "👤 Personel Yönetimi":
                     if st.button("Personeli Sil", type="secondary", key=f"btn_del_{edit_p_id}"):
                         if confirm_delete:
                             cur = conn.cursor()
+                            # Kullanici yetki hesabini da sil
+                            cur.execute("SELECT sicil_no FROM personel WHERE id=?", (edit_p_id,))
+                            p_row = cur.fetchone()
+                            if p_row:
+                                cur.execute("DELETE FROM kullanicilar WHERE kullanici_adi=?", (p_row[0],))
+                            
                             cur.execute("DELETE FROM performans WHERE personel_id=?", (edit_p_id,))
                             cur.execute("DELETE FROM personel WHERE id=?", (edit_p_id,))
                             conn.commit()
-                            st.warning("Personel ve ilişkili performans kayıtları başarıyla silindi.")
+                            st.warning("Personel, performans kayıtları ve yetkili hesabı silindi.")
                             st.rerun()
                         else:
                             st.error("Lütfen önce silme onay kutusunu işaretleyin.")
@@ -569,97 +626,234 @@ elif choice == "👤 Personel Yönetimi":
 # ==========================================
 elif choice == "📄 Sunum ve Rapor Alma":
     st.header("📄 Komutanlık Sunum ve Rapor Dosyası Oluşturucu")
-    st.info("Bu modül sadece **Reporter** ve **Admin** yetkisine sahip kullanıcılar tarafından erişilebilir.")
+    st.info("Bu modülden seçilen birim ve filtrelere uygun olarak **PowerPoint (.pptx)** sunumu veya **Excel (.xlsx)** raporu indirebilirsiniz.")
+
+    # FILTRELEME SEÇENEKLERİ
+    st.subheader("🎯 Rapor ve Sunum Kapsamını Seçin")
+    f_col1, f_col2, f_col3 = st.columns(3)
+    
+    with f_col1:
+        kapsam_tipi = st.selectbox("Hedef Kapsam", ["Tüm Tabur", "Belirli Bölük", "Belirli Tim"])
+    
+    secilen_b = "Tüm Tabur"
+    secilen_t = "-"
+    
+    with f_col2:
+        if kapsam_tipi in ["Belirli Bölük", "Belirli Tim"]:
+            secilen_b = st.selectbox("Bölük Seçin", BIRLIK_LISTESI)
+    
+    with f_col3:
+        if kapsam_tipi == "Belirli Tim":
+            secilen_t = st.selectbox("Tim Seçin", TIM_LISTESI)
+            
+    periyot_filtre = st.selectbox("Periyot Filtresi", ["Tümü"] + PERIYOTLAR)
 
     conn = get_db()
     query = '''
         SELECT p.tarih, p.periyot, per.sicil_no AS PBİK, per.ad_soyad, per.rutbe, per.birlik, per.tim,
-               p.sinav, p.mekik, p.barfiks, p.kosu_3000m, p.yazili_sinav, p.kaydeden
+               p.sinav, p.mekik, p.barfiks, p.kosu_3000m_sn, p.yazili_sinav, p.kaydeden
         FROM performans p
         JOIN personel per ON p.personel_id = per.id
     '''
     report_df = pd.read_sql_query(query, conn)
     conn.close()
 
+    # Filtreleri Uygula
+    if kapsam_tipi == "Belirli Bölük":
+        report_df = report_df[report_df["birlik"] == secilen_b]
+    elif kapsam_tipi == "Belirli Tim":
+        report_df = report_df[(report_df["birlik"] == secilen_b) & (report_df["tim"] == secilen_t)]
+
+    if periyot_filtre != "Tümü":
+        report_df = report_df[report_df["periyot"] == periyot_filtre]
+
     if report_df.empty:
-        st.warning("Raporlanacak veri bulunamadı.")
+        st.warning("Seçilen kriterlere uygun raporlanacak veri bulunamadı.")
     else:
+        st.divider()
         st.subheader("📊 Rapor Önizleme")
-        st.dataframe(report_df, use_container_width=True)
+        
+        display_rep = report_df.copy()
+        display_rep["3000m Koşu"] = display_rep["kosu_3000m_sn"].apply(format_kosu_saniye)
+        st.dataframe(display_rep[["PBİK", "ad_soyad", "rutbe", "birlik", "tim", "periyot", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
 
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            report_df.to_excel(writer, sheet_name='Tabur Performans Raporu', index=False)
-            ozet = report_df.groupby("birlik")[["sinav", "mekik", "barfiks", "kosu_3000m", "yazili_sinav"]].mean()
-            ozet.to_excel(writer, sheet_name='Bölük Ortalamaları Özet')
+        col_d1, col_d2 = st.columns(2)
 
-        buffer.seek(0)
+        # 1. POWERPOINT (.PPTX) SUNUMU ÜRETİMİ
+        with col_d1:
+            def create_pptx():
+                prs = Presentation()
+                prs.slide_width = Inches(13.333)
+                prs.slide_height = Inches(7.5)
+                blank_layout = prs.slide_layouts[6]
 
-        st.download_button(
-            label="📥 Sunum ve Excel Raporunu İndir (.xlsx)",
-            data=buffer,
-            file_name=f"Tabur_Performans_Raporu_{datetime.date.today()}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+                # --- SLAYT 1: KAPAK ---
+                slide1 = prs.slides.add_slide(blank_layout)
+                title_box = slide1.shapes.add_textbox(Inches(1), Inches(2), Inches(11.333), Inches(3.5))
+                tf1 = title_box.text_frame
+                tf1.word_wrap = True
+                
+                p1 = tf1.paragraphs[0]
+                p1.text = "🛡️ TABUR PERSONEL PERFORMANS SUNUMU"
+                p1.font.size = Pt(32)
+                p1.font.bold = True
+                p1.font.color.rgb = RGBColor(30, 58, 138)
+                p1.alignment = PP_ALIGN.CENTER
+                
+                kapsam_metni = f"{kapsam_tipi}"
+                if kapsam_tipi == "Belirli Bölük":
+                    kapsam_metni += f" ({secilen_b})"
+                elif kapsam_tipi == "Belirli Tim":
+                    kapsam_metni += f" ({secilen_b} / {secilen_t})"
+
+                p2 = tf1.add_paragraph()
+                p2.text = f"\nKapsam: {kapsam_metni}\nPeriyot: {periyot_filtre}\nTarih: {datetime.date.today().strftime('%d.%m.%Y')}"
+                p2.font.size = Pt(20)
+                p2.font.color.rgb = RGBColor(71, 85, 105)
+                p2.alignment = PP_ALIGN.CENTER
+
+                # --- SLAYT 2: BAŞARI TABLOSU ---
+                slide2 = prs.slides.add_slide(blank_layout)
+                header_box2 = slide2.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
+                p_h2 = header_box2.text_frame.paragraphs[0]
+                p_h2.text = "📊 En Başarılı Personeller ve Performans Tablosu"
+                p_h2.font.size = Pt(24)
+                p_h2.font.bold = True
+                p_h2.font.color.rgb = RGBColor(30, 58, 138)
+
+                df_top = report_df.copy()
+                df_top["Genel_Skor"] = (
+                    df_top["sinav"].fillna(0) + 
+                    df_top["mekik"].fillna(0) + 
+                    (df_top["barfiks"].fillna(0) * 2) + 
+                    df_top["yazili_sinav"].fillna(0) - 
+                    (df_top["kosu_3000m_sn"].fillna(1200) / 10)
+                )
+                df_top5 = df_top.sort_values(by="Genel_Skor", ascending=False).head(5)
+
+                rows, cols = len(df_top5) + 1, 7
+                table_shape = slide2.shapes.add_table(rows, cols, Inches(0.8), Inches(1.5), Inches(11.733), Inches(4.5))
+                table = table_shape.table
+
+                headers = ["PBİK", "Ad Soyad", "Birlik", "Şınav", "Mekik", "Barfiks", "3000m Koşu"]
+                for c_idx, h_text in enumerate(headers):
+                    cell = table.cell(0, c_idx)
+                    cell.text = h_text
+                    for p in cell.text_frame.paragraphs:
+                        p.font.bold = True
+                        p.font.size = Pt(13)
+                        p.font.color.rgb = RGBColor(255, 255, 255)
+                        p.alignment = PP_ALIGN.CENTER
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = RGBColor(30, 58, 138)
+
+                for r_idx, (_, r_data) in enumerate(df_top5.iterrows(), start=1):
+                    vals = [
+                        str(r_data["PBİK"]), str(r_data["ad_soyad"]), str(r_data["birlik"]),
+                        str(int(r_data["sinav"])) if pd.notna(r_data["sinav"]) else "-",
+                        str(int(r_data["mekik"])) if pd.notna(r_data["mekik"]) else "-",
+                        str(int(r_data["barfiks"])) if pd.notna(r_data["barfiks"]) else "-",
+                        format_kosu_saniye(r_data["kosu_3000m_sn"])
+                    ]
+                    for c_idx, val in enumerate(vals):
+                        cell = table.cell(r_idx, c_idx)
+                        cell.text = val
+                        for p in cell.text_frame.paragraphs:
+                            p.font.size = Pt(12)
+                            p.alignment = PP_ALIGN.CENTER
+
+                # --- SLAYT 3: GRAFİKLER ---
+                slide3 = prs.slides.add_slide(blank_layout)
+                header_box3 = slide3.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
+                p_h3 = header_box3.text_frame.paragraphs[0]
+                p_h3.text = "📈 Grafiksel Performans ve Dağılım Analizi"
+                p_h3.font.size = Pt(24)
+                p_h3.font.bold = True
+                p_h3.font.color.rgb = RGBColor(30, 58, 138)
+
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.8))
+                plt.subplots_adjust(wspace=0.3)
+
+                # Bar Grafiği
+                grp = report_df.groupby("birlik")[["sinav", "mekik", "barfiks"]].mean()
+                if not grp.empty:
+                    grp.plot(kind="bar", ax=ax1, color=["#2563EB", "#16A34A", "#EA580C"])
+                    ax1.set_title("Bölük Bazlı Spor Ortalamaları", fontsize=11, fontweight="bold")
+                    ax1.set_ylabel("Tekrar")
+                    ax1.grid(axis="y", linestyle="--", alpha=0.6)
+                    ax1.tick_params(axis='x', rotation=20)
+
+                # Mum / Boxplot Grafiği
+                data_box = [
+                    report_df["sinav"].dropna(),
+                    report_df["mekik"].dropna(),
+                    report_df["barfiks"].dropna(),
+                    report_df["yazili_sinav"].dropna()
+                ]
+                if any(len(d) > 0 for d in data_box):
+                    bp = ax2.boxplot([d for d in data_box if len(d)>0], patch_artist=True)
+                    colors = ['#93C5FD', '#86EFAC', '#FDBA74', '#FCA5A5']
+                    for patch, color in zip(bp['boxes'], colors[:len(bp['boxes'])]):
+                        patch.set_facecolor(color)
+                    ax2.set_title("Performans Dağılımı (Mum / Boxplot)", fontsize=11, fontweight="bold")
+                    ax2.grid(axis="y", linestyle="--", alpha=0.6)
+
+                img_buf = io.BytesIO()
+                plt.savefig(img_buf, format="png", dpi=150, bbox_inches="tight")
+                plt.close(fig)
+                img_buf.seek(0)
+
+                slide3.shapes.add_picture(img_buf, Inches(0.8), Inches(1.3), width=Inches(11.733))
+
+                pptx_out = io.BytesIO()
+                prs.save(pptx_out)
+                pptx_out.seek(0)
+                return pptx_out
+
+            pptx_file = create_pptx()
+            st.download_button(
+                label="🖥️ Profesyonel PowerPoint Sunumunu İndir (.pptx)",
+                data=pptx_file,
+                file_name=f"Tabur_Performans_Sunumu_{datetime.date.today()}.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                type="primary"
+            )
+
+        # 2. EXCEL (.XLSX) RAPORU ÜRETİMİ
+        with col_d2:
+            excel_buf = io.BytesIO()
+            with pd.ExcelWriter(excel_buf, engine='openpyxl') as writer:
+                display_rep.to_excel(writer, sheet_name='Performans Raporu', index=False)
+                ozet = report_df.groupby("birlik")[["sinav", "mekik", "barfiks", "kosu_3000m_sn", "yazili_sinav"]].mean()
+                ozet.to_excel(writer, sheet_name='Bölük Ortalamaları')
+
+            excel_buf.seek(0)
+            st.download_button(
+                label="📊 Detaylı Excel Raporunu İndir (.xlsx)",
+                data=excel_buf,
+                file_name=f"Tabur_Performans_Raporu_{datetime.date.today()}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 # ==========================================
-# MENÜ 5: YÖNETİCİ PANELİ
+# MENÜ 5: YÖNETİCİ PANELİ (SADELEŞTİRİLDİ)
 # ==========================================
 elif choice == "⚙️ Yönetici Paneli":
-    st.header("⚙️ Admin Kullanıcı Yönetimi & Şifre Sıfırlama")
+    st.header("⚙️ Yönetici Paneli - Kullanıcı Sıfırlama & Listeleme")
     
-    tab1, tab2 = st.tabs(["Yeni Yetkili Kullanıcı Ekle", "Şifre Sıfırlama ve Kullanıcı Listesi"])
-
     conn = get_db()
 
-    with tab1:
-        st.subheader("Sisteme Giriş Yapacak Yetkili Hesabı Oluştur")
-        u_col1, u_col2 = st.columns(2)
-        
-        with u_col1:
-            new_username = st.text_input("Kullanıcı Adı")
-            new_password = st.text_input("Şifre", type="password")
-            new_role = st.selectbox("Atanacak Rol / Yetki", ROLLER)
+    st.subheader("📋 Mevcut Yetkili Kullanıcılar")
+    users_df = pd.read_sql_query("SELECT id, kullanici_adi, rol, birlik, tim FROM kullanicilar", conn)
+    st.dataframe(users_df, use_container_width=True)
 
-        with u_col2:
-            if new_role in ["Admin", "Reporter"]:
-                assigned_birlik = "Tüm Tabur"
-                assigned_tim = "-"
-                st.info("💡 Admin ve Reporter tüm tabur genelinde yetkilidir.")
-            else:
-                assigned_birlik = st.selectbox("Yetkili Olduğu Birlik", BIRLIK_LISTESI)
-                
-                if assigned_birlik in ["Karargah", "Destek Bölüğü"] or new_role in ["Bölük Yetkilisi", "Destek Takım Komutanı"]:
-                    assigned_tim = "-"
-                    st.info("💡 Bu birlik veya rol seviyesinde tim seçimi yapılmaz.")
-                else:
-                    assigned_tim = st.selectbox("Yetkili Olduğu Tim", TIM_LISTESI)
-
-        if st.button("Yetkili Kullanıcıyı Kaydet", type="primary"):
-            if new_username and new_password:
-                try:
-                    cur = conn.cursor()
-                    hashed_p = make_hashes(new_password)
-                    cur.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
-                                (new_username.strip(), hashed_p, new_role, assigned_birlik, assigned_tim))
-                    conn.commit()
-                    st.success(f"'{new_username}' kullanıcısı {new_role} ({assigned_birlik} / {assigned_tim}) yetkisiyle başarıyla eklendi.")
-                except sqlite3.IntegrityError:
-                    st.error("Bu kullanıcı adı zaten sistemde kayıtlı!")
-            else:
-                st.warning("Lütfen kullanıcı adı ve şifre alanlarını doldurun.")
-
-    with tab2:
-        st.subheader("Mevcut Yetkili Kullanıcılar")
-        users_df = pd.read_sql_query("SELECT id, kullanici_adi, rol, birlik, tim FROM kullanicilar", conn)
-        st.dataframe(users_df, use_container_width=True)
-
-        st.divider()
-        st.subheader("Şifre Sıfırla")
+    st.divider()
+    st.subheader("🔑 Kullanıcı Şifre Sıfırlama")
+    if not users_df.empty:
         selected_user_id = st.selectbox("Şifresi Değiştirilecek Kullanıcı", users_df["id"].tolist(), format_func=lambda x: users_df[users_df['id']==x]['kullanici_adi'].values[0])
         reset_pass = st.text_input("Yeni Şifre Belirle", type="password")
         
-        if st.button("Şifreyi Güncelle"):
+        if st.button("Şifreyi Güncelle", type="primary"):
             if reset_pass:
                 cur = conn.cursor()
                 cur.execute("UPDATE kullanicilar SET sifre = ? WHERE id = ?", (make_hashes(reset_pass), selected_user_id))
