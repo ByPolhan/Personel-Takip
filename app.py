@@ -287,8 +287,6 @@ elif choice == "📝 Veri Girişi":
     with col3:
         secilen_periyot = st.selectbox("Periyot", PERIYOTLAR)
 
-    tarih = st.date_input("Test Tarihi", datetime.date.today())
-
     if secilen_birlik in ["Karargah", "Destek Bölüğü"]:
         personel_df = pd.read_sql_query("SELECT id, sicil_no, ad_soyad FROM personel WHERE birlik=?", 
                                         conn, params=(secilen_birlik,))
@@ -308,6 +306,7 @@ elif choice == "📝 Veri Girişi":
 
         with tab_spor:
             st.subheader("🏃‍♂️ Fiziki Yeterlilik ve Spor Testi")
+            spor_tarih = st.date_input("Spor Test Tarihi", datetime.date.today(), key="spor_tarih")
             c1, c2 = st.columns(2)
             with c1:
                 sinav = st.number_input("Şınav (Tekrar)", min_value=0, max_value=200, value=30, key="spor_sinav")
@@ -321,12 +320,13 @@ elif choice == "📝 Veri Girişi":
                 cur.execute('''INSERT INTO performans 
                               (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m, yazili_sinav, kaydeden)
                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                           (secilen_personel_id, str(tarih), secilen_periyot, sinav, mekik, barfiks, kosu, None, user["username"]))
+                           (secilen_personel_id, str(spor_tarih), secilen_periyot, sinav, mekik, barfiks, kosu, None, user["username"]))
                 conn.commit()
                 st.success("Spor testi verileri başarıyla kaydedildi!")
 
         with tab_yazili:
             st.subheader("📝 Yazılı Sınav Notu Girişi")
+            yazili_tarih = st.date_input("Yazılı Sınav Tarihi", datetime.date.today(), key="yazili_tarih")
             yazili = st.number_input("Yazılı Sınav Notu (0 - 100)", min_value=0.0, max_value=100.0, value=75.0, key="yazili_not")
 
             if st.button("Yazılı Sınav Notunu Kaydet", type="primary", key="btn_yazili"):
@@ -334,7 +334,7 @@ elif choice == "📝 Veri Girişi":
                 cur.execute('''INSERT INTO performans 
                               (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m, yazili_sinav, kaydeden)
                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                           (secilen_personel_id, str(tarih), secilen_periyot, None, None, None, None, yazili, user["username"]))
+                           (secilen_personel_id, str(yazili_tarih), secilen_periyot, None, None, None, None, yazili, user["username"]))
                 conn.commit()
                 st.success("Yazılı sınav notu başarıyla kaydedildi!")
     
@@ -346,9 +346,12 @@ elif choice == "📝 Veri Girişi":
 elif choice == "👤 Personel Yönetimi":
     st.header("👤 Tabur Personel Kayıt ve Yetkilendirme Yönetimi")
 
-    tab1, tab2, tab3 = st.tabs(["Yeni Personel Ekle", "Personel Listesi", "Mevcut Personele Yetki Tanımla"])
-
     conn = get_db()
+
+    if role == "Admin":
+        tab1, tab2, tab3, tab4 = st.tabs(["Yeni Personel Ekle", "Personel Listesi", "Mevcut Personele Yetki Tanımla", "✏️ Personel Güncelle / Sil"])
+    else:
+        tab1, tab2, tab3 = st.tabs(["Yeni Personel Ekle", "Personel Listesi", "Mevcut Personele Yetki Tanımla"])
 
     with tab1:
         st.subheader("Yeni Personel Tanımla")
@@ -468,6 +471,61 @@ elif choice == "👤 Personel Yönetimi":
                         st.error("Bu kullanıcı adı zaten kullanılmaktadır!")
                 else:
                     st.warning("Lütfen kullanıcı adı ve şifre girin.")
+
+    if role == "Admin":
+        with tab4:
+            st.subheader("✏️ Personel Bilgilerini Güncelle veya Sil (Sadece Admin)")
+            all_p_df = pd.read_sql_query("SELECT * FROM personel", conn)
+            
+            if all_p_df.empty:
+                st.info("Kayıtlı personel bulunmamaktadır.")
+            else:
+                edit_p_id = st.selectbox("Düzenlenecek / Silinecek Personel",
+                                         options=all_p_df["id"].tolist(),
+                                         format_func=lambda x: f"{all_p_df[all_p_df['id']==x]['sicil_no'].values[0]} - {all_p_df[all_p_df['id']==x]['rutbe'].values[0]} {all_p_df[all_p_df['id']==x]['ad_soyad'].values[0]} ({all_p_df[all_p_df['id']==x]['birlik'].values[0]} / {all_p_df[all_p_df['id']==x]['tim'].values[0]})",
+                                         key="select_edit_p")
+                
+                target_p = all_p_df[all_p_df['id'] == edit_p_id].iloc[0]
+                
+                col_e1, col_e2 = st.columns(2)
+                with col_e1:
+                    edit_pbik = st.text_input("PBİK", value=target_p['sicil_no'], key="edit_pbik")
+                    edit_ad_soyad = st.text_input("Ad Soyad", value=target_p['ad_soyad'], key="edit_ad")
+                    edit_rutbe = st.selectbox("Rütbe", RUTBE_LISTESI, index=RUTBE_LISTESI.index(target_p['rutbe']) if target_p['rutbe'] in RUTBE_LISTESI else 0, key="edit_rutbe")
+                with col_e2:
+                    edit_birlik = st.selectbox("Birlik", BIRLIK_LISTESI, index=BIRLIK_LISTESI.index(target_p['birlik']) if target_p['birlik'] in BIRLIK_LISTESI else 0, key="edit_birlik")
+                    
+                    if edit_birlik in ["Karargah", "Destek Bölüğü"]:
+                        edit_tim = "-"
+                    else:
+                        edit_tim = st.selectbox("Tim / Unvan", TIM_LISTESI, index=TIM_LISTESI.index(target_p['tim']) if target_p['tim'] in TIM_LISTESI else 0, key="edit_tim")
+
+                btn_col1, btn_col2 = st.columns(2)
+                with btn_col1:
+                    if st.button("Bilgileri Güncelle", type="primary", key="btn_update_p"):
+                        try:
+                            cur = conn.cursor()
+                            cur.execute("""UPDATE personel 
+                                           SET sicil_no=?, ad_soyad=?, rutbe=?, birlik=?, tim=? 
+                                           WHERE id=?""",
+                                        (edit_pbik, edit_ad_soyad, edit_rutbe, edit_birlik, edit_tim, edit_p_id))
+                            conn.commit()
+                            st.success("Personel bilgileri başarıyla güncellendi!")
+                            st.rerun()
+                        except sqlite3.IntegrityError:
+                            st.error("Bu PBİK başka bir personele kayıtlı!")
+                with btn_col2:
+                    confirm_delete = st.checkbox("Silme işlemini onaylıyorum", key="confirm_del")
+                    if st.button("Personeli Sil", type="secondary", key="btn_delete_p"):
+                        if confirm_delete:
+                            cur = conn.cursor()
+                            cur.execute("DELETE FROM performans WHERE personel_id=?", (edit_p_id,))
+                            cur.execute("DELETE FROM personel WHERE id=?", (edit_p_id,))
+                            conn.commit()
+                            st.warning("Personel ve ilişkili performans kayıtları başarıyla silindi.")
+                            st.rerun()
+                        else:
+                            st.error("Lütfen önce silme onay kutusunu işaretleyin.")
 
     conn.close()
 
