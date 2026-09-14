@@ -24,6 +24,14 @@ BIRLIK_LISTESI = [
 ]
 
 TIM_LISTESI = ["1. Tim", "2. Tim", "3. Tim", "4. Tim"]
+
+RUTBE_LISTESI = [
+    "Subay",
+    "Astsubay",
+    "Uzman Jandarma",
+    "Uzman Çavuş"
+]
+
 PERIYOTLAR = ["Günlük", "Haftalık", "Aylık"]
 
 ROLLER = [
@@ -260,7 +268,6 @@ elif choice == "📝 Veri Girişi":
         secilen_birlik = st.selectbox("Birlik", allowed_birlikler)
     
     with col2:
-        # Karargah ve Destek Bölüğünde tim seçimi yapılmaz
         if secilen_birlik in ["Karargah", "Destek Bölüğü"]:
             secilen_tim = "-"
             st.info("💡 Bu birlikte tim seçimi yoktur.")
@@ -276,7 +283,6 @@ elif choice == "📝 Veri Girişi":
 
     tarih = st.date_input("Test Tarihi", datetime.date.today())
 
-    # Personel Getirme Sorgusu
     if secilen_birlik in ["Karargah", "Destek Bölüğü"]:
         personel_df = pd.read_sql_query("SELECT id, sicil_no, ad_soyad FROM personel WHERE birlik=?", 
                                         conn, params=(secilen_birlik,))
@@ -337,11 +343,10 @@ elif choice == "👤 Personel Yönetimi":
         with col1:
             sicil_no = st.text_input("Sicil / T.C. No")
             ad_soyad = st.text_input("Ad Soyad")
-            rutbe = st.text_input("Rütbe (Örn: Uzm.Çvş., Astsb., Tğm.)")
+            rutbe = st.selectbox("Rütbe Seçin", RUTBE_LISTESI)
         with col2:
             p_birlik = st.selectbox("Atandığı Birlik", p_birlikler)
             
-            # Karargah ve Destek Bölüğü için Tim Yok
             if p_birlik in ["Karargah", "Destek Bölüğü"]:
                 p_tim = "-"
                 st.info("💡 Bu birlikte tim ayrımı bulunmamaktadır.")
@@ -352,14 +357,14 @@ elif choice == "👤 Personel Yönetimi":
                     p_timler = TIM_LISTESI
                 p_tim = st.selectbox("Atandığı Tim", p_timler)
 
-        if st.button("Personel Kaydet"):
+        if st.button("Personel Kaydet", type="primary"):
             if sicil_no and ad_soyad:
                 try:
                     cur = conn.cursor()
                     cur.execute("INSERT INTO personel (sicil_no, ad_soyad, rutbe, birlik, tim) VALUES (?, ?, ?, ?, ?)",
                                 (sicil_no, ad_soyad, rutbe, p_birlik, p_tim))
                     conn.commit()
-                    st.success(f"{ad_soyad} başarıyla sisteme eklendi.")
+                    st.success(f"{rutbe} {ad_soyad} başarıyla sisteme eklendi.")
                 except sqlite3.IntegrityError:
                     st.error("Bu Sicil/T.C. No ile kayıtlı bir personel zaten var!")
             else:
@@ -424,36 +429,34 @@ elif choice == "📄 Sunum ve Rapor Alma":
 elif choice == "⚙️ Yönetici Paneli":
     st.header("⚙️ Admin Kullanıcı Yönetimi & Şifre Sıfırlama")
     
-    tab1, tab2 = st.tabs(["Yeni Kullanıcı / Yetkili Tanımla", "Şifre Sıfırlama ve Kullanıcı Listesi"])
+    tab1, tab2 = st.tabs(["Yeni Yetkili Kullanıcı Ekle", "Şifre Sıfırlama ve Kullanıcı Listesi"])
 
     conn = get_db()
 
     with tab1:
-        st.subheader("Sisteme Yeni Yetkili Ekle")
+        st.subheader("Sisteme Giriş Yapacak Yetkili Hesabı Oluştur")
         u_col1, u_col2 = st.columns(2)
         
         with u_col1:
             new_username = st.text_input("Kullanıcı Adı")
             new_password = st.text_input("Şifre", type="password")
-            new_role = st.selectbox("Atanacak Rol", ROLLER)
+            new_role = st.selectbox("Atanacak Rol / Yetki", ROLLER)
 
         with u_col2:
             if new_role in ["Admin", "Reporter"]:
                 assigned_birlik = "Tüm Tabur"
                 assigned_tim = "-"
-                st.info("Admin ve Reporter tüm taburdan sorumludur.")
-            elif new_role == "Destek Takım Komutanı":
-                assigned_birlik = "Destek Bölüğü"
-                assigned_tim = "-"
-                st.info("Destek Takım Komutanı sadece Destek Bölüğünden sorumludur.")
+                st.info("💡 Admin ve Reporter tüm tabur genelinde yetkilidir.")
             else:
-                assigned_birlik = st.selectbox("Sorumlu Olduğu Birlik", [b for b in BIRLIK_LISTESI if b not in ["Karargah", "Destek Bölüğü"]])
-                if new_role == "Bölük Yetkilisi":
+                assigned_birlik = st.selectbox("Yetkili Olduğu Birlik", BIRLIK_LISTESI)
+                
+                if assigned_birlik in ["Karargah", "Destek Bölüğü"] or new_role in ["Bölük Yetkilisi", "Destek Takım Komutanı"]:
                     assigned_tim = "-"
+                    st.info("💡 Bu birlik veya rol seviyesinde tim seçimi yapılmaz.")
                 else:
-                    assigned_tim = st.selectbox("Sorumlu Olduğu Tim", TIM_LISTESI)
+                    assigned_tim = st.selectbox("Yetkili Olduğu Tim", TIM_LISTESI)
 
-        if st.button("Kullanıcıyı Kaydet", type="primary"):
+        if st.button("Yetkili Kullanıcıyı Kaydet", type="primary"):
             if new_username and new_password:
                 try:
                     cur = conn.cursor()
@@ -461,14 +464,14 @@ elif choice == "⚙️ Yönetici Paneli":
                     cur.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
                                 (new_username, hashed_p, new_role, assigned_birlik, assigned_tim))
                     conn.commit()
-                    st.success(f"'{new_username}' kullanıcısı {new_role} olarak eklendi.")
+                    st.success(f"'{new_username}' kullanıcısı {new_role} ({assigned_birlik} / {assigned_tim}) yetkisiyle başarıyla eklendi.")
                 except sqlite3.IntegrityError:
-                    st.error("Bu kullanıcı adı zaten alınmış!")
+                    st.error("Bu kullanıcı adı zaten sistemde kayıtlı!")
             else:
-                st.warning("Lütfen kullanıcı adı ve şifre girin.")
+                st.warning("Lütfen kullanıcı adı ve şifre alanlarını doldurun.")
 
     with tab2:
-        st.subheader("Mevcut Kullanıcılar ve Şifre Sıfırlama")
+        st.subheader("Mevcut Yetkili Kullanıcılar")
         users_df = pd.read_sql_query("SELECT id, kullanici_adi, rol, birlik, tim FROM kullanicilar", conn)
         st.dataframe(users_df, use_container_width=True)
 
