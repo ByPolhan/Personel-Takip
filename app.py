@@ -165,6 +165,29 @@ if user['birlik'] != "Tüm Tabur":
 if user['tim'] != "-" and user['tim'] != "Tüm Timler":
     st.sidebar.write(f"**Tim:** {user['tim']}")
 
+# KULLANICININ KENDİ ŞİFRESİNİ DEĞİŞTİRMESİ
+with st.sidebar.expander("🔑 Şifremi Değiştir"):
+    eski_sifre = st.text_input("Mevcut Şifre", type="password", key="pwd_old")
+    yeni_sifre = st.text_input("Yeni Şifre", type="password", key="pwd_new")
+    yeni_sifre_tekrar = st.text_input("Yeni Şifre (Tekrar)", type="password", key="pwd_new2")
+    if st.button("Şifremi Güncelle", key="btn_change_pwd"):
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT sifre FROM kullanicilar WHERE kullanici_adi = ?", (user["username"],))
+        curr_p = c.fetchone()
+        if curr_p and check_hashes(eski_sifre, curr_p[0]):
+            if yeni_sifre and yeni_sifre == yeni_sifre_tekrar:
+                c.execute("UPDATE kullanicilar SET sifre = ? WHERE kullanici_adi = ?", (make_hashes(yeni_sifre), user["username"]))
+                conn.commit()
+                st.success("Şifreniz başarıyla değiştirildi!")
+            else:
+                st.error("Yeni şifreler uyuşmuyor veya boş!")
+        else:
+            st.error("Mevcut şifreniz hatalı!")
+        conn.close()
+
+st.sidebar.divider()
+
 menu_options = [
     "📊 Tabur Performans Dashboard",
     "📝 Veri Girişi",
@@ -223,17 +246,17 @@ if choice == "📊 Tabur Performans Dashboard":
 
         st.subheader("📈 Genel Ortalamalar")
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("Şınav (Ort.)", f"{df['sinav'].mean():.1f} tk")
-        m2.metric("Mekik (Ort.)", f"{df['mekik'].mean():.1f} tk")
-        m3.metric("Barfiks (Ort.)", f"{df['barfiks'].mean():.1f} tk")
-        m4.metric("3000m Koşu (Ort.)", f"{df['kosu_3000m'].mean():.1f} dk")
-        m5.metric("Yazılı Sınav (Ort.)", f"{df['yazili_sinav'].mean():.1f} Pn")
+        m1.metric("Şınav (Ort.)", f"{df['sinav'].mean():.1f}")
+        m2.metric("Mekik (Ort.)", f"{df['mekik'].mean():.1f}")
+        m3.metric("Barfiks (Ort.)", f"{df['barfiks'].mean():.1f}")
+        m4.metric("3000m Koşu (Ort.)", f"{df['kosu_3000m'].mean():.2f}")
+        m5.metric("Yazılı Sınav (Ort.)", f"{df['yazili_sinav'].mean():.1f}")
 
         st.divider()
 
         col_g1, col_g2 = st.columns(2)
         with col_g1:
-            st.subheader("🏆 Bölük Bazlı Genel Başarı Ortalama")
+            st.subheader("🏆 Bölük Bazlı Genel Başarı Ortalamaları")
             boluk_grp = df.groupby("birlik")[["sinav", "mekik", "barfiks", "yazili_sinav"]].mean()
             st.bar_chart(boluk_grp)
 
@@ -307,13 +330,23 @@ elif choice == "📝 Veri Girişi":
         with tab_spor:
             st.subheader("🏃‍♂️ Fiziki Yeterlilik ve Spor Testi")
             spor_tarih = st.date_input("Spor Test Tarihi", datetime.date.today(), key="spor_tarih")
+            
             c1, c2 = st.columns(2)
             with c1:
                 sinav = st.number_input("Şınav (Tekrar)", min_value=0, max_value=200, value=30, key="spor_sinav")
                 mekik = st.number_input("Mekik (Tekrar)", min_value=0, max_value=200, value=35, key="spor_mekik")
-            with c2:
                 barfiks = st.number_input("Barfiks (Tekrar)", min_value=0, max_value=100, value=10, key="spor_barfiks")
-                kosu = st.number_input("3.000 Metre Koşu (Dakika.Saniye - Örn: 13.5)", min_value=0.0, max_value=60.0, value=14.0, step=0.1, key="spor_kosu")
+            
+            with c2:
+                st.write("**3.000 Metre Koşu Süresi**")
+                k_col1, k_col2 = st.columns(2)
+                with k_col1:
+                    kosu_dk = st.number_input("Dakika", min_value=0, max_value=60, value=14, key="spor_kosu_dk")
+                with k_col2:
+                    kosu_sn = st.number_input("Saniye (0-59)", min_value=0, max_value=59, value=0, key="spor_kosu_sn")
+                
+                # Saniye hesabı (örn: 14 dk 30 sn -> 14.30 float formatted)
+                kosu = float(f"{kosu_dk}.{kosu_sn:02d}")
 
             if st.button("Spor Testini Kaydet", type="primary", key="btn_spor"):
                 cur = conn.cursor()
@@ -322,7 +355,7 @@ elif choice == "📝 Veri Girişi":
                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                            (secilen_personel_id, str(spor_tarih), secilen_periyot, sinav, mekik, barfiks, kosu, None, user["username"]))
                 conn.commit()
-                st.success("Spor testi verileri başarıyla kaydedildi!")
+                st.success(f"Spor testi verileri ({kosu_dk} dk {kosu_sn} sn) başarıyla kaydedildi!")
 
         with tab_yazili:
             st.subheader("📝 Yazılı Sınav Notu Girişi")
@@ -398,13 +431,13 @@ elif choice == "👤 Personel Yönetimi":
                 try:
                     cur = conn.cursor()
                     cur.execute("INSERT INTO personel (sicil_no, ad_soyad, rutbe, birlik, tim) VALUES (?, ?, ?, ?, ?)",
-                                (sicil_no, ad_soyad, rutbe, p_birlik, p_tim))
+                                (str(sicil_no).strip(), ad_soyad.strip(), rutbe, p_birlik, p_tim))
                     
                     if yetki_ver:
                         if new_username and new_password:
                             hashed_p = make_hashes(new_password)
                             cur.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
-                                        (new_username, hashed_p, new_role, p_birlik, p_tim))
+                                        (new_username.strip(), hashed_p, new_role, p_birlik, p_tim))
                             st.success(f"{rutbe} {ad_soyad} eklendi ve '{new_username}' kullanıcı adı ile giriş yetkisi verildi!")
                         else:
                             st.warning("Personel eklendi fakat kullanıcı adı veya şifre boş bırakıldığı için yetki hesabı açılamadı!")
@@ -412,6 +445,7 @@ elif choice == "👤 Personel Yönetimi":
                         st.success(f"{rutbe} {ad_soyad} başarıyla sisteme eklendi.")
                     
                     conn.commit()
+                    st.rerun()
                 except sqlite3.IntegrityError:
                     st.error("Bu PBİK veya Kullanıcı Adı zaten sistemde kayıtlı!")
             else:
@@ -419,7 +453,7 @@ elif choice == "👤 Personel Yönetimi":
 
     with tab2:
         st.subheader("Mevcut Personel Listesi")
-        p_df = pd.read_sql_query("SELECT sicil_no AS PBİK, ad_soyad AS Ad_Soyad, rutbe AS Rütbe, birlik AS Birlik, tim AS Tim FROM personel", conn)
+        p_df = pd.read_sql_query("SELECT sicil_no AS PBİK, ad_soyad AS Ad_Soyad, rutbe AS Rütbe, birlik AS Birlik, tim AS Tim FROM personel ORDER BY id DESC", conn)
         
         if role == "Destek Takım Komutanı":
             p_df = p_df[p_df["Birlik"] == "Destek Bölüğü"]
@@ -432,7 +466,7 @@ elif choice == "👤 Personel Yönetimi":
 
     with tab3:
         st.subheader("Mevcut Personele Veri Giriş Yetkilisi (Kullanıcı) Yap")
-        p_df_all = pd.read_sql_query("SELECT id, sicil_no, ad_soyad, rutbe, birlik, tim FROM personel", conn)
+        p_df_all = pd.read_sql_query("SELECT id, sicil_no, ad_soyad, rutbe, birlik, tim FROM personel ORDER BY id DESC", conn)
         
         if role == "Destek Takım Komutanı":
             p_df_all = p_df_all[p_df_all["birlik"] == "Destek Bölüğü"]
@@ -452,7 +486,7 @@ elif choice == "👤 Personel Yönetimi":
             
             c1, c2 = st.columns(2)
             with c1:
-                y_username = st.text_input("Giriş Kullanıcı Adı", value=sel_p['sicil_no'], key="exist_u")
+                y_username = st.text_input("Giriş Kullanıcı Adı", value=str(sel_p['sicil_no']), key="exist_u")
                 y_password = st.text_input("Şifre", type="password", key="exist_p")
             with c2:
                 y_role = st.selectbox("Yetki / Rol", ROLLER, key="exist_r")
@@ -464,7 +498,7 @@ elif choice == "👤 Personel Yönetimi":
                         cur = conn.cursor()
                         hashed_p = make_hashes(y_password)
                         cur.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
-                                    (y_username, hashed_p, y_role, sel_p['birlik'], sel_p['tim']))
+                                    (y_username.strip(), hashed_p, y_role, sel_p['birlik'], sel_p['tim']))
                         conn.commit()
                         st.success(f"'{sel_p['ad_soyad']}' için {y_role} yetkili hesabı başarıyla oluşturuldu.")
                     except sqlite3.IntegrityError:
@@ -475,48 +509,49 @@ elif choice == "👤 Personel Yönetimi":
     if role == "Admin":
         with tab4:
             st.subheader("✏️ Personel Bilgilerini Güncelle veya Sil (Sadece Admin)")
-            all_p_df = pd.read_sql_query("SELECT * FROM personel", conn)
+            all_p_df = pd.read_sql_query("SELECT * FROM personel ORDER BY id DESC", conn)
             
             if all_p_df.empty:
                 st.info("Kayıtlı personel bulunmamaktadır.")
             else:
                 edit_p_id = st.selectbox("Düzenlenecek / Silinecek Personel",
                                          options=all_p_df["id"].tolist(),
-                                         format_func=lambda x: f"{all_p_df[all_p_df['id']==x]['sicil_no'].values[0]} - {all_p_df[all_p_df['id']==x]['rutbe'].values[0]} {all_p_df[all_p_df['id']==x]['ad_soyad'].values[0]} ({all_p_df[all_p_df['id']==x]['birlik'].values[0]} / {all_p_df[all_p_df['id']==x]['tim'].values[0]})",
-                                         key="select_edit_p")
+                                         format_func=lambda x: f"PBİK: {all_p_df[all_p_df['id']==x]['sicil_no'].values[0]} - {all_p_df[all_p_df['id']==x]['rutbe'].values[0]} {all_p_df[all_p_df['id']==x]['ad_soyad'].values[0]} ({all_p_df[all_p_df['id']==x]['birlik'].values[0]} / {all_p_df[all_p_df['id']==x]['tim'].values[0]})",
+                                         key="select_edit_p_box")
                 
                 target_p = all_p_df[all_p_df['id'] == edit_p_id].iloc[0]
                 
+                # Dinamik keyler ile Streamlit session state kitlenmesi engellendi
                 col_e1, col_e2 = st.columns(2)
                 with col_e1:
-                    edit_pbik = st.text_input("PBİK", value=target_p['sicil_no'], key="edit_pbik")
-                    edit_ad_soyad = st.text_input("Ad Soyad", value=target_p['ad_soyad'], key="edit_ad")
-                    edit_rutbe = st.selectbox("Rütbe", RUTBE_LISTESI, index=RUTBE_LISTESI.index(target_p['rutbe']) if target_p['rutbe'] in RUTBE_LISTESI else 0, key="edit_rutbe")
+                    edit_pbik = st.text_input("PBİK", value=str(target_p['sicil_no']), key=f"e_pbik_{edit_p_id}")
+                    edit_ad_soyad = st.text_input("Ad Soyad", value=str(target_p['ad_soyad']), key=f"e_ad_{edit_p_id}")
+                    edit_rutbe = st.selectbox("Rütbe", RUTBE_LISTESI, index=RUTBE_LISTESI.index(target_p['rutbe']) if target_p['rutbe'] in RUTBE_LISTESI else 0, key=f"e_rutbe_{edit_p_id}")
                 with col_e2:
-                    edit_birlik = st.selectbox("Birlik", BIRLIK_LISTESI, index=BIRLIK_LISTESI.index(target_p['birlik']) if target_p['birlik'] in BIRLIK_LISTESI else 0, key="edit_birlik")
+                    edit_birlik = st.selectbox("Birlik", BIRLIK_LISTESI, index=BIRLIK_LISTESI.index(target_p['birlik']) if target_p['birlik'] in BIRLIK_LISTESI else 0, key=f"e_birlik_{edit_p_id}")
                     
                     if edit_birlik in ["Karargah", "Destek Bölüğü"]:
                         edit_tim = "-"
                     else:
-                        edit_tim = st.selectbox("Tim / Unvan", TIM_LISTESI, index=TIM_LISTESI.index(target_p['tim']) if target_p['tim'] in TIM_LISTESI else 0, key="edit_tim")
+                        edit_tim = st.selectbox("Tim / Unvan", TIM_LISTESI, index=TIM_LISTESI.index(target_p['tim']) if target_p['tim'] in TIM_LISTESI else 0, key=f"e_tim_{edit_p_id}")
 
                 btn_col1, btn_col2 = st.columns(2)
                 with btn_col1:
-                    if st.button("Bilgileri Güncelle", type="primary", key="btn_update_p"):
+                    if st.button("Bilgileri Güncelle", type="primary", key=f"btn_upd_{edit_p_id}"):
                         try:
                             cur = conn.cursor()
                             cur.execute("""UPDATE personel 
                                            SET sicil_no=?, ad_soyad=?, rutbe=?, birlik=?, tim=? 
                                            WHERE id=?""",
-                                        (edit_pbik, edit_ad_soyad, edit_rutbe, edit_birlik, edit_tim, edit_p_id))
+                                        (edit_pbik.strip(), edit_ad_soyad.strip(), edit_rutbe, edit_birlik, edit_tim, edit_p_id))
                             conn.commit()
                             st.success("Personel bilgileri başarıyla güncellendi!")
                             st.rerun()
                         except sqlite3.IntegrityError:
                             st.error("Bu PBİK başka bir personele kayıtlı!")
                 with btn_col2:
-                    confirm_delete = st.checkbox("Silme işlemini onaylıyorum", key="confirm_del")
-                    if st.button("Personeli Sil", type="secondary", key="btn_delete_p"):
+                    confirm_delete = st.checkbox("Silme işlemini onaylıyorum", key=f"del_chk_{edit_p_id}")
+                    if st.button("Personeli Sil", type="secondary", key=f"btn_del_{edit_p_id}"):
                         if confirm_delete:
                             cur = conn.cursor()
                             cur.execute("DELETE FROM performans WHERE personel_id=?", (edit_p_id,))
@@ -606,7 +641,7 @@ elif choice == "⚙️ Yönetici Paneli":
                     cur = conn.cursor()
                     hashed_p = make_hashes(new_password)
                     cur.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
-                                (new_username, hashed_p, new_role, assigned_birlik, assigned_tim))
+                                (new_username.strip(), hashed_p, new_role, assigned_birlik, assigned_tim))
                     conn.commit()
                     st.success(f"'{new_username}' kullanıcısı {new_role} ({assigned_birlik} / {assigned_tim}) yetkisiyle başarıyla eklendi.")
                 except sqlite3.IntegrityError:
