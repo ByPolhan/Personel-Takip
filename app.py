@@ -47,7 +47,6 @@ ROLLER = [
     "Tim Komutanı"
 ]
 
-# Yardimci Fonksiyon: Saniyeyi Dk:Sn formatina donusturur
 def format_kosu_saniye(saniye):
     if pd.isna(saniye) or saniye is None or saniye == 0:
         return "-"
@@ -107,7 +106,6 @@ def init_db():
                     FOREIGN KEY(personel_id) REFERENCES personel(id)
                 )''')
     
-    # Eski veritabani kolon guncelleme kontrolu
     c.execute("PRAGMA table_info(performans)")
     cols = [col[1] for col in c.fetchall()]
     if "kosu_3000m" in cols and "kosu_3000m_sn" not in cols:
@@ -185,7 +183,6 @@ if user['birlik'] != "Tüm Tabur":
 if user['tim'] != "-" and user['tim'] != "Tüm Timler":
     st.sidebar.write(f"**Tim:** {user['tim']}")
 
-# KULLANICININ KENDİ ŞİFRESİNİ DEĞİŞTİRMESİ
 with st.sidebar.expander("🔑 Şifremi Değiştir"):
     eski_sifre = st.text_input("Mevcut Şifre", type="password", key="pwd_old")
     yeni_sifre = st.text_input("Yeni Şifre", type="password", key="pwd_new")
@@ -208,7 +205,6 @@ with st.sidebar.expander("🔑 Şifremi Değiştir"):
 
 st.sidebar.divider()
 
-# ROL BAZLI MENÜ BİLEŞENİ
 menu_options = []
 
 if role in ["Admin", "Destek Takım Komutanı", "Bölük Yetkilisi", "Tim Komutanı"]:
@@ -313,7 +309,6 @@ elif choice == "📝 Veri Girişi":
 
     conn = get_db()
     
-    # Reporter ve Admin tum birliklere veri girebilir
     if role in ["Admin", "Reporter"]:
         allowed_birlikler = BIRLIK_LISTESI
     elif role == "Destek Takım Komutanı":
@@ -381,7 +376,6 @@ elif choice == "📝 Veri Girişi":
 
             if st.button("Spor Testini Kaydet", type="primary", key="btn_spor"):
                 cur = conn.cursor()
-                # Mevcut kayit var mi kontrolu (UPSERT mantigi)
                 cur.execute("SELECT id FROM performans WHERE personel_id=? AND tarih=? AND periyot=?",
                             (secilen_personel_id, str(spor_tarih), secilen_periyot))
                 existing = cur.fetchone()
@@ -605,7 +599,6 @@ elif choice == "👤 Personel Yönetimi":
                     if st.button("Personeli Sil", type="secondary", key=f"btn_del_{edit_p_id}"):
                         if confirm_delete:
                             cur = conn.cursor()
-                            # Kullanici yetki hesabini da sil
                             cur.execute("SELECT sicil_no FROM personel WHERE id=?", (edit_p_id,))
                             p_row = cur.fetchone()
                             if p_row:
@@ -628,7 +621,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
     st.header("📄 Komutanlık Sunum ve Rapor Dosyası Oluşturucu")
     st.info("Bu modülden seçilen birim ve filtrelere uygun olarak **PowerPoint (.pptx)** sunumu veya **Excel (.xlsx)** raporu indirebilirsiniz.")
 
-    # FILTRELEME SEÇENEKLERİ
     st.subheader("🎯 Rapor ve Sunum Kapsamını Seçin")
     f_col1, f_col2, f_col3 = st.columns(3)
     
@@ -658,7 +650,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
     report_df = pd.read_sql_query(query, conn)
     conn.close()
 
-    # Filtreleri Uygula
     if kapsam_tipi == "Belirli Bölük":
         report_df = report_df[report_df["birlik"] == secilen_b]
     elif kapsam_tipi == "Belirli Tim":
@@ -679,7 +670,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
 
         col_d1, col_d2 = st.columns(2)
 
-        # 1. POWERPOINT (.PPTX) SUNUMU ÜRETİMİ
         with col_d1:
             def create_pptx():
                 prs = Presentation()
@@ -687,7 +677,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
                 prs.slide_height = Inches(7.5)
                 blank_layout = prs.slide_layouts[6]
 
-                # --- SLAYT 1: KAPAK ---
                 slide1 = prs.slides.add_slide(blank_layout)
                 title_box = slide1.shapes.add_textbox(Inches(1), Inches(2), Inches(11.333), Inches(3.5))
                 tf1 = title_box.text_frame
@@ -712,7 +701,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
                 p2.font.color.rgb = RGBColor(71, 85, 105)
                 p2.alignment = PP_ALIGN.CENTER
 
-                # --- SLAYT 2: BAŞARI TABLOSU ---
                 slide2 = prs.slides.add_slide(blank_layout)
                 header_box2 = slide2.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
                 p_h2 = header_box2.text_frame.paragraphs[0]
@@ -762,7 +750,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
                             p.font.size = Pt(12)
                             p.alignment = PP_ALIGN.CENTER
 
-                # --- SLAYT 3: GRAFİKLER ---
                 slide3 = prs.slides.add_slide(blank_layout)
                 header_box3 = slide3.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
                 p_h3 = header_box3.text_frame.paragraphs[0]
@@ -774,7 +761,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.8))
                 plt.subplots_adjust(wspace=0.3)
 
-                # Bar Grafiği
                 grp = report_df.groupby("birlik")[["sinav", "mekik", "barfiks"]].mean()
                 if not grp.empty:
                     grp.plot(kind="bar", ax=ax1, color=["#2563EB", "#16A34A", "#EA580C"])
@@ -783,7 +769,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
                     ax1.grid(axis="y", linestyle="--", alpha=0.6)
                     ax1.tick_params(axis='x', rotation=20)
 
-                # Mum / Boxplot Grafiği
                 data_box = [
                     report_df["sinav"].dropna(),
                     report_df["mekik"].dropna(),
@@ -819,7 +804,6 @@ elif choice == "📄 Sunum ve Rapor Alma":
                 type="primary"
             )
 
-        # 2. EXCEL (.XLSX) RAPORU ÜRETİMİ
         with col_d2:
             excel_buf = io.BytesIO()
             with pd.ExcelWriter(excel_buf, engine='openpyxl') as writer:
@@ -836,10 +820,10 @@ elif choice == "📄 Sunum ve Rapor Alma":
             )
 
 # ==========================================
-# MENÜ 5: YÖNETİCİ PANELİ (SADELEŞTİRİLDİ)
+# MENÜ 5: YÖNETİCİ PANELİ (GÜNCELLENDİ)
 # ==========================================
 elif choice == "⚙️ Yönetici Paneli":
-    st.header("⚙️ Yönetici Paneli - Kullanıcı Sıfırlama & Listeleme")
+    st.header("⚙️ Yönetici Paneli - Kullanıcı Hesabı Yönetimi")
     
     conn = get_db()
 
@@ -848,18 +832,55 @@ elif choice == "⚙️ Yönetici Paneli":
     st.dataframe(users_df, use_container_width=True)
 
     st.divider()
-    st.subheader("🔑 Kullanıcı Şifre Sıfırlama")
-    if not users_df.empty:
-        selected_user_id = st.selectbox("Şifresi Değiştirilecek Kullanıcı", users_df["id"].tolist(), format_func=lambda x: users_df[users_df['id']==x]['kullanici_adi'].values[0])
-        reset_pass = st.text_input("Yeni Şifre Belirle", type="password")
-        
-        if st.button("Şifreyi Güncelle", type="primary"):
-            if reset_pass:
-                cur = conn.cursor()
-                cur.execute("UPDATE kullanicilar SET sifre = ? WHERE id = ?", (make_hashes(reset_pass), selected_user_id))
-                conn.commit()
-                st.success("Kullanıcı şifresi başarıyla yenilendi.")
-            else:
-                st.warning("Lütfen yeni şifreyi giriniz.")
+    tab_pwd, tab_del = st.tabs(["🔑 Şifre Sıfırla", "🗑️ Kullanıcı Sil / Hesabı Kaldır"])
+
+    with tab_pwd:
+        st.subheader("🔑 Kullanıcı Şifre Sıfırlama")
+        if not users_df.empty:
+            selected_user_id = st.selectbox(
+                "Şifresi Değiştirilecek Kullanıcı",
+                users_df["id"].tolist(),
+                format_func=lambda x: f"{users_df[users_df['id']==x]['kullanici_adi'].values[0]} ({users_df[users_df['id']==x]['rol'].values[0]})",
+                key="select_reset_user"
+            )
+            reset_pass = st.text_input("Yeni Şifre Belirle", type="password", key="reset_pass_input")
+            
+            if st.button("Şifreyi Güncelle", type="primary", key="btn_reset_pass"):
+                if reset_pass:
+                    cur = conn.cursor()
+                    cur.execute("UPDATE kullanicilar SET sifre = ? WHERE id = ?", (make_hashes(reset_pass), selected_user_id))
+                    conn.commit()
+                    st.success("Kullanıcı şifresi başarıyla yenilendi.")
+                else:
+                    st.warning("Lütfen yeni şifreyi giriniz.")
+
+    with tab_del:
+        st.subheader("🗑️ Yetkili Kullanıcı Hesabını Sil")
+        st.caption("Not: Buradan sildiğiniz kullanıcı hesaplarının sisteme giriş yetkisi tamamen kaldırılır. Ana 'admin' hesabı ve aktif olarak oturum açtığınız kendi hesabınız silinemez.")
+
+        # Ana admin ve oturum acan kendi kullanicisini silme listesinden haric tut
+        deletable_users = users_df[~users_df["kullanici_adi"].isin(["admin", user["username"]])]
+
+        if deletable_users.empty:
+            st.info("Silinebilir başka kullanıcı hesabı bulunmamaktadır.")
+        else:
+            del_user_id = st.selectbox(
+                "Silinecek Kullanıcı Hesabı",
+                deletable_users["id"].tolist(),
+                format_func=lambda x: f"Kullanıcı Adı: {deletable_users[deletable_users['id']==x]['kullanici_adi'].values[0]} - Rol: {deletable_users[deletable_users['id']==x]['rol'].values[0]} ({deletable_users[deletable_users['id']==x]['birlik'].values[0]} / {deletable_users[deletable_users['id']==x]['tim'].values[0]})",
+                key="select_del_user"
+            )
+
+            confirm_del = st.checkbox("Bu kullanıcı hesabını silmeyi onaylıyorum", key="chk_confirm_del_user")
+
+            if st.button("Kullanıcı Hesabını Sil", type="primary", key="btn_del_user"):
+                if confirm_del:
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM kullanicilar WHERE id = ?", (del_user_id,))
+                    conn.commit()
+                    st.success("Kullanıcı hesabı başarıyla silindi!")
+                    st.rerun()
+                else:
+                    st.error("Lütfen önce silme onay kutusunu işaretleyin.")
 
     conn.close()
