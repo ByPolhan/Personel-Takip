@@ -14,7 +14,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Birlik Hiyerarşi Sıralaması (Tam İstenen Sırayla)
 BIRLIK_LISTESI = [
     "Karargah",
     "Destek Bölüğü",
@@ -54,7 +53,6 @@ def init_db():
     conn = get_db()
     c = conn.cursor()
     
-    # Kullanıcılar Tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS kullanicilar (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     kullanici_adi TEXT UNIQUE,
@@ -64,7 +62,6 @@ def init_db():
                     tim TEXT
                 )''')
     
-    # Personel Tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS personel (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     sicil_no TEXT UNIQUE,
@@ -74,7 +71,6 @@ def init_db():
                     tim TEXT
                 )''')
     
-    # Performans Verileri Tablosu
     c.execute('''CREATE TABLE IF NOT EXISTS performans (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     personel_id INTEGER,
@@ -89,19 +85,17 @@ def init_db():
                     FOREIGN KEY(personel_id) REFERENCES personel(id)
                 )''')
     
-    # Varsayılan Admin Hesabı Oluşturma (Eğer yoksa)
     c.execute("SELECT * FROM kullanicilar WHERE kullanici_adi = 'admin'")
     if not c.fetchone():
         admin_pass = make_hashes("admin123")
         c.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
-                  ('admin', admin_pass, 'Admin', 'Tüm Tabur', 'Tüm Timler'))
+                  ('admin', admin_pass, 'Admin', 'Tüm Tabur', '-'))
         
-    # Varsayılan Reporter Hesabı Oluşturma (Eğer yoksa)
     c.execute("SELECT * FROM kullanicilar WHERE kullanici_adi = 'reporter'")
     if not c.fetchone():
         rep_pass = make_hashes("reporter123")
         c.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
-                  ('reporter', rep_pass, 'Reporter', 'Tüm Tabur', 'Tüm Timler'))
+                  ('reporter', rep_pass, 'Reporter', 'Tüm Tabur', '-'))
 
     conn.commit()
     conn.close()
@@ -125,9 +119,6 @@ def login_user(username, password):
     conn.close()
     return data
 
-# ==========================================
-# GİRİŞ EKRANI
-# ==========================================
 if not st.session_state["logged_in"]:
     st.title("🛡️ Tabur Personel Performans Takip Sistemi")
     st.subheader("Giriş Paneli")
@@ -153,7 +144,7 @@ if not st.session_state["logged_in"]:
     st.stop()
 
 # ==========================================
-# 4. YETKİLENDİRİLMİŞ MENÜ SİSTEMİ
+# 4. MENÜ VE YETKİLENDİRME
 # ==========================================
 user = st.session_state["user_info"]
 role = user["rol"]
@@ -163,21 +154,18 @@ st.sidebar.write(f"**Kullanıcı:** {user['username']}")
 st.sidebar.write(f"**Rol:** {role}")
 if user['birlik'] != "Tüm Tabur":
     st.sidebar.write(f"**Birlik:** {user['birlik']}")
-if user['tim'] != "Tüm Timler" and user['tim'] != "-":
+if user['tim'] != "-" and user['tim'] != "Tüm Timler":
     st.sidebar.write(f"**Tim:** {user['tim']}")
 
-# Menü Seçenekleri Yetkiye Göre Oluşturulur
 menu_options = [
     "📊 Tabur Performans Dashboard",
     "📝 Veri Girişi",
     "👤 Personel Yönetimi"
 ]
 
-# SADECE Admin ve Reporter Sunum/Rapor indirebilir
 if role in ["Admin", "Reporter"]:
     menu_options.append("📄 Sunum ve Rapor Alma")
 
-# SADECE Admin Kullanıcı Tanımlayabilir / Şifre Sıfırlayabilir
 if role == "Admin":
     menu_options.append("⚙️ Yönetici Paneli")
 
@@ -189,7 +177,7 @@ if st.sidebar.button("Güvenli Çıkış"):
 choice = st.sidebar.radio("Menü", menu_options)
 
 # ==========================================
-# MENÜ 1: TABUR PERFORMANS DASHBOARD
+# MENÜ 1: DASHBOARD
 # ==========================================
 if choice == "📊 Tabur Performans Dashboard":
     st.header("📊 Tabur İçi Performans ve Sıralama Analizi")
@@ -207,7 +195,6 @@ if choice == "📊 Tabur Performans Dashboard":
     if df.empty:
         st.info("Henüz veritabanında girilmiş performans kaydı bulunmamaktadır.")
     else:
-        # Rol Filtrelemesi (Erişim Yetkisi)
         if role == "Destek Takım Komutanı":
             df = df[df["birlik"] == "Destek Bölüğü"]
         elif role == "Bölük Yetkilisi":
@@ -215,7 +202,6 @@ if choice == "📊 Tabur Performans Dashboard":
         elif role == "Tim Komutanı":
             df = df[(df["birlik"] == user["birlik"]) & (df["tim"] == user["tim"])]
 
-        # Filtreleme Alanı
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             secilen_periyot = st.selectbox("Periyot Seçin", ["Tümü"] + PERIYOTLAR)
@@ -227,7 +213,6 @@ if choice == "📊 Tabur Performans Dashboard":
         if secilen_birlik != "Tümü":
             df = df[df["birlik"] == secilen_birlik]
 
-        # Genel Tabur Ortalamaları Metrikleri
         st.subheader("📈 Genel Ortalamalar")
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("Şınav (Ort.)", f"{df['sinav'].mean():.1f} tk")
@@ -238,16 +223,14 @@ if choice == "📊 Tabur Performans Dashboard":
 
         st.divider()
 
-        # Tabur İçi Bölük ve Tim Kıyaslamaları
         col_g1, col_g2 = st.columns(2)
-        
         with col_g1:
-            st.subheader("🏆 Bölük Bazlı Yazılı Sınav / Performans Ortalama")
+            st.subheader("🏆 Bölük Bazlı Genel Başarı Ortalama")
             boluk_grp = df.groupby("birlik")[["sinav", "mekik", "barfiks", "yazili_sinav"]].mean()
             st.bar_chart(boluk_grp)
 
         with col_g2:
-            st.subheader("🏃‍♂️ Bölük Bazlı 3000m Koşu Dereceleri (Düşük İyi)")
+            st.subheader("🏃‍♂️ Bölük Bazlı 3000m Koşu Dereceleri")
             kosu_grp = df.groupby("birlik")["kosu_3000m"].mean()
             st.bar_chart(kosu_grp)
 
@@ -264,7 +247,6 @@ elif choice == "📝 Veri Girişi":
 
     conn = get_db()
     
-    # Giriş Yapanın Yetkisine Göre Birlik Kısıtlaması
     if role in ["Admin", "Reporter"]:
         allowed_birlikler = BIRLIK_LISTESI
     elif role == "Destek Takım Komutanı":
@@ -278,29 +260,36 @@ elif choice == "📝 Veri Girişi":
         secilen_birlik = st.selectbox("Birlik", allowed_birlikler)
     
     with col2:
-        if role == "Tim Komutanı":
-            allowed_timler = [user["tim"]]
-        elif secilen_birlik in ["Karargah", "Destek Bölüğü"]:
-            allowed_timler = ["1. Tim"]  # Karargah/Destek için tek hat
+        # Karargah ve Destek Bölüğünde tim seçimi yapılmaz
+        if secilen_birlik in ["Karargah", "Destek Bölüğü"]:
+            secilen_tim = "-"
+            st.info("💡 Bu birlikte tim seçimi yoktur.")
         else:
-            allowed_timler = TIM_LISTESI
-        secilen_tim = st.selectbox("Tim", allowed_timler)
+            if role == "Tim Komutanı":
+                allowed_timler = [user["tim"]]
+            else:
+                allowed_timler = TIM_LISTESI
+            secilen_tim = st.selectbox("Tim", allowed_timler)
 
     with col3:
         secilen_periyot = st.selectbox("Periyot", PERIYOTLAR)
 
     tarih = st.date_input("Test Tarihi", datetime.date.today())
 
-    # Personel Getir
-    personel_df = pd.read_sql_query("SELECT id, sicil_no, ad_soyad FROM personel WHERE birlik=? AND tim=?", 
-                                    conn, params=(secilen_birlik, secilen_tim))
+    # Personel Getirme Sorgusu
+    if secilen_birlik in ["Karargah", "Destek Bölüğü"]:
+        personel_df = pd.read_sql_query("SELECT id, sicil_no, ad_soyad FROM personel WHERE birlik=?", 
+                                        conn, params=(secilen_birlik,))
+    else:
+        personel_df = pd.read_sql_query("SELECT id, sicil_no, ad_soyad FROM personel WHERE birlik=? AND tim=?", 
+                                        conn, params=(secilen_birlik, secilen_tim))
     
     if personel_df.empty:
-        st.warning("Seçilen Birlik ve Timde kayıtlı personel bulunamadı. Lütfen önce Personel Yönetimi menüsünden personel ekleyin.")
+        st.warning("Seçilen birlikte kayıtlı personel bulunamadı. Lütfen önce Personel Yönetimi menüsünden personel ekleyin.")
     else:
-        secilen_personel_str = st.selectbox("Personel Seçin", 
-                                            options=personel_df["id"].tolist(), 
-                                            format_func=lambda x: f"{personel_df[personel_df['id']==x]['sicil_no'].values[0]} - {personel_df[personel_df['id']==x]['ad_soyad'].values[0]}")
+        secilen_personel_id = st.selectbox("Personel Seçin", 
+                                           options=personel_df["id"].tolist(), 
+                                           format_func=lambda x: f"{personel_df[personel_df['id']==x]['sicil_no'].values[0]} - {personel_df[personel_df['id']==x]['ad_soyad'].values[0]}")
         
         st.subheader("📋 Test ve Performans Değerleri")
         c1, c2, c3 = st.columns(3)
@@ -318,7 +307,7 @@ elif choice == "📝 Veri Girişi":
             cur.execute('''INSERT INTO performans 
                           (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m, yazili_sinav, kaydeden)
                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                       (secilen_personel_str, str(tarih), secilen_periyot, sinav, mekik, barfiks, kosu, yazili, user["username"]))
+                       (secilen_personel_id, str(tarih), secilen_periyot, sinav, mekik, barfiks, kosu, yazili, user["username"]))
             conn.commit()
             st.success("Performans verisi başarıyla kaydedildi!")
     
@@ -337,7 +326,6 @@ elif choice == "👤 Personel Yönetimi":
     with tab1:
         st.subheader("Yeni Personel Tanımla")
         
-        # Yetkiye göre birlik sınırlaması
         if role in ["Admin", "Reporter"]:
             p_birlikler = BIRLIK_LISTESI
         elif role == "Destek Takım Komutanı":
@@ -352,13 +340,17 @@ elif choice == "👤 Personel Yönetimi":
             rutbe = st.text_input("Rütbe (Örn: Uzm.Çvş., Astsb., Tğm.)")
         with col2:
             p_birlik = st.selectbox("Atandığı Birlik", p_birlikler)
-            if role == "Tim Komutanı":
-                p_timler = [user["tim"]]
-            elif p_birlik in ["Karargah", "Destek Bölüğü"]:
-                p_timler = ["1. Tim"]
+            
+            # Karargah ve Destek Bölüğü için Tim Yok
+            if p_birlik in ["Karargah", "Destek Bölüğü"]:
+                p_tim = "-"
+                st.info("💡 Bu birlikte tim ayrımı bulunmamaktadır.")
             else:
-                p_timler = TIM_LISTESI
-            p_tim = st.selectbox("Atandığı Tim", p_timler)
+                if role == "Tim Komutanı":
+                    p_timler = [user["tim"]]
+                else:
+                    p_timler = TIM_LISTESI
+                p_tim = st.selectbox("Atandığı Tim", p_timler)
 
         if st.button("Personel Kaydet"):
             if sicil_no and ad_soyad:
@@ -377,7 +369,6 @@ elif choice == "👤 Personel Yönetimi":
         st.subheader("Mevcut Personel Listesi")
         p_df = pd.read_sql_query("SELECT sicil_no, ad_soyad, rutbe, birlik, tim FROM personel", conn)
         
-        # Filtrele
         if role == "Destek Takım Komutanı":
             p_df = p_df[p_df["birlik"] == "Destek Bölüğü"]
         elif role == "Bölük Yetkilisi":
@@ -390,11 +381,11 @@ elif choice == "👤 Personel Yönetimi":
     conn.close()
 
 # ==========================================
-# MENÜ 4: SUNUM VE RAPOR ALMA (Reporter & Admin Özel)
+# MENÜ 4: SUNUM VE RAPOR ALMA
 # ==========================================
 elif choice == "📄 Sunum ve Rapor Alma":
     st.header("📄 Komutanlık Sunum ve Rapor Dosyası Oluşturucu")
-    st.info("Bu modül sadece **Reporter** ve **Admin** yetkisine sahip kullanıcılar tarafından sunum ve resmi rapor indirmek için kullanılabilir.")
+    st.info("Bu modül sadece **Reporter** ve **Admin** yetkisine sahip kullanıcılar tarafından erişilebilir.")
 
     conn = get_db()
     query = '''
@@ -412,12 +403,9 @@ elif choice == "📄 Sunum ve Rapor Alma":
         st.subheader("📊 Rapor Önizleme")
         st.dataframe(report_df, use_container_width=True)
 
-        # Excel İndirme Butonu Oluşturma
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             report_df.to_excel(writer, sheet_name='Tabur Performans Raporu', index=False)
-            
-            # Bölük Bazlı Özet Sayfası Ekleme
             ozet = report_df.groupby("birlik")[["sinav", "mekik", "barfiks", "kosu_3000m", "yazili_sinav"]].mean()
             ozet.to_excel(writer, sheet_name='Bölük Ortalamaları Özet')
 
@@ -431,7 +419,7 @@ elif choice == "📄 Sunum ve Rapor Alma":
         )
 
 # ==========================================
-# MENÜ 5: YÖNETİCİ PANELİ (Admin Özel)
+# MENÜ 5: YÖNETİCİ PANELİ
 # ==========================================
 elif choice == "⚙️ Yönetici Paneli":
     st.header("⚙️ Admin Kullanıcı Yönetimi & Şifre Sıfırlama")
@@ -447,16 +435,16 @@ elif choice == "⚙️ Yönetici Paneli":
         with u_col1:
             new_username = st.text_input("Kullanıcı Adı")
             new_password = st.text_input("Şifre", type="password")
-            new_role = st.selectbox("Atanacak Rol", ROLLLER)
+            new_role = st.selectbox("Atanacak Rol", ROLLER)
 
         with u_col2:
             if new_role in ["Admin", "Reporter"]:
                 assigned_birlik = "Tüm Tabur"
-                assigned_tim = "Tüm Timler"
+                assigned_tim = "-"
                 st.info("Admin ve Reporter tüm taburdan sorumludur.")
             elif new_role == "Destek Takım Komutanı":
                 assigned_birlik = "Destek Bölüğü"
-                assigned_tim = "1. Tim"
+                assigned_tim = "-"
                 st.info("Destek Takım Komutanı sadece Destek Bölüğünden sorumludur.")
             else:
                 assigned_birlik = st.selectbox("Sorumlu Olduğu Birlik", [b for b in BIRLIK_LISTESI if b not in ["Karargah", "Destek Bölüğü"]])
