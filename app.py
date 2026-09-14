@@ -323,9 +323,9 @@ elif choice == "📝 Veri Girişi":
 # MENÜ 3: PERSONEL YÖNETİMİ
 # ==========================================
 elif choice == "👤 Personel Yönetimi":
-    st.header("👤 Tabur Personel Kayıt ve Yönetimi")
+    st.header("👤 Tabur Personel Kayıt ve Yetkilendirme Yönetimi")
 
-    tab1, tab2 = st.tabs(["Yeni Personel Ekle", "Personel Listesi"])
+    tab1, tab2, tab3 = st.tabs(["Yeni Personel Ekle", "Personel Listesi", "Mevcut Personele Yetki Tanımla"])
 
     conn = get_db()
 
@@ -357,16 +357,39 @@ elif choice == "👤 Personel Yönetimi":
                     p_timler = TIM_LISTESI
                 p_tim = st.selectbox("Atandığı Tim", p_timler)
 
-        if st.button("Personel Kaydet", type="primary"):
+        st.divider()
+        yetki_ver = st.checkbox("🔑 Bu personele sisteme giriş / veri giriş yetkisi (Kullanıcı Hesabı) tanımla")
+        
+        if yetki_ver:
+            st.info(f"Sisteme giriş hesabı açılıyor. Birlik: **{p_birlik}**, Tim: **{p_tim}** olarak atanacaktır.")
+            u_col1, u_col2 = st.columns(2)
+            with u_col1:
+                new_username = st.text_input("Kullanıcı Adı (Sisteme Giriş)", value=sicil_no if sicil_no else "")
+                new_password = st.text_input("Giriş Şifresi", type="password")
+            with u_col2:
+                new_role = st.selectbox("Atanacak Rol / Yetki", ROLLER, index=4 if p_tim != "-" else 3)
+
+        if st.button("Personeli Kaydet", type="primary"):
             if sicil_no and ad_soyad:
                 try:
                     cur = conn.cursor()
                     cur.execute("INSERT INTO personel (sicil_no, ad_soyad, rutbe, birlik, tim) VALUES (?, ?, ?, ?, ?)",
                                 (sicil_no, ad_soyad, rutbe, p_birlik, p_tim))
+                    
+                    if yetki_ver:
+                        if new_username and new_password:
+                            hashed_p = make_hashes(new_password)
+                            cur.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
+                                        (new_username, hashed_p, new_role, p_birlik, p_tim))
+                            st.success(f"{rutbe} {ad_soyad} eklendi ve '{new_username}' kullanıcı adı ile giriş yetkisi verildi!")
+                        else:
+                            st.warning("Personel eklendi fakat kullanıcı adı veya şifre boş bırakıldığı için yetki hesabı açılamadı!")
+                    else:
+                        st.success(f"{rutbe} {ad_soyad} başarıyla sisteme eklendi.")
+                    
                     conn.commit()
-                    st.success(f"{rutbe} {ad_soyad} başarıyla sisteme eklendi.")
                 except sqlite3.IntegrityError:
-                    st.error("Bu Sicil/T.C. No ile kayıtlı bir personel zaten var!")
+                    st.error("Bu Sicil/T.C. No veya Kullanıcı Adı zaten sistemde kayıtlı!")
             else:
                 st.warning("Lütfen Sicil ve Ad Soyad alanlarını doldurun.")
 
@@ -382,6 +405,48 @@ elif choice == "👤 Personel Yönetimi":
             p_df = p_df[(p_df["birlik"] == user["birlik"]) & (p_df["tim"] == user["tim"])]
 
         st.dataframe(p_df, use_container_width=True)
+
+    with tab3:
+        st.subheader("Mevcut Personeli Veri Giriş Yetkilisi (Kullanıcı) Yap")
+        p_df_all = pd.read_sql_query("SELECT id, sicil_no, ad_soyad, rutbe, birlik, tim FROM personel", conn)
+        
+        if role == "Destek Takım Komutanı":
+            p_df_all = p_df_all[p_df_all["birlik"] == "Destek Bölüğü"]
+        elif role == "Bölük Yetkilisi":
+            p_df_all = p_df_all[p_df_all["birlik"] == user["birlik"]]
+        elif role == "Tim Komutanı":
+            p_df_all = p_df_all[(p_df_all["birlik"] == user["birlik"]) & (p_df_all["tim"] == user["tim"])]
+
+        if p_df_all.empty:
+            st.info("Kayıtlı personel bulunmamaktadır.")
+        else:
+            selected_p_id = st.selectbox("Personele Yetki Tanımlamak İçin Seçin",
+                                         options=p_df_all["id"].tolist(),
+                                         format_func=lambda x: f"{p_df_all[p_df_all['id']==x]['rutbe'].values[0]} {p_df_all[p_df_all['id']==x]['ad_soyad'].values[0]} ({p_df_all[p_df_all['id']==x]['birlik'].values[0]} / {p_df_all[p_df_all['id']==x]['tim'].values[0]})")
+            
+            sel_p = p_df_all[p_df_all['id'] == selected_p_id].iloc[0]
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                y_username = st.text_input("Giriş Kullanıcı Adı", value=sel_p['sicil_no'], key="exist_u")
+                y_password = st.text_input("Şifre", type="password", key="exist_p")
+            with c2:
+                y_role = st.selectbox("Yetki / Rol", ROLLER, key="exist_r")
+                st.info(f"📍 Otomatik Birlik/Tim: **{sel_p['birlik']} / {sel_p['tim']}**")
+
+            if st.button("Yetkili Hesabını Oluştur", type="primary"):
+                if y_username and y_password:
+                    try:
+                        cur = conn.cursor()
+                        hashed_p = make_hashes(y_password)
+                        cur.execute("INSERT INTO kullanicilar (kullanici_adi, sifre, rol, birlik, tim) VALUES (?, ?, ?, ?, ?)",
+                                    (y_username, hashed_p, y_role, sel_p['birlik'], sel_p['tim']))
+                        conn.commit()
+                        st.success(f"'{sel_p['ad_soyad']}' için {y_role} yetkili hesabı başarıyla oluşturuldu.")
+                    except sqlite3.IntegrityError:
+                        st.error("Bu kullanıcı adı zaten kullanılmaktadır!")
+                else:
+                    st.warning("Lütfen kullanıcı adı ve şifre girin.")
 
     conn.close()
 
