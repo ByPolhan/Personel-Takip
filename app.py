@@ -5,7 +5,12 @@ import hashlib
 import datetime
 import io
 import os
+
+# Sunucu modunda grafik kilitlenmelerini önlemek için Agg backend kullanımı
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
@@ -267,11 +272,18 @@ if choice == "📊 Tabur Performans Dashboard":
         dash_tab1, dash_tab2 = st.tabs(["📊 Genellik & Sıralama", "📈 Personel Bireysel Geçmiş Takibi"])
 
         with dash_tab1:
+            if role in ["Admin", "Reporter"]:
+                dash_birlikler = ["Tümü"] + BIRLIK_LISTESI
+            elif role == "Destek Takım Komutanı":
+                dash_birlikler = ["Destek Bölüğü"]
+            else:
+                dash_birlikler = [user["birlik"]]
+
             col_f1, col_f2 = st.columns(2)
             with col_f1:
                 secilen_periyot = st.selectbox("Periyot Seçin", ["Tümü"] + PERIYOTLAR, key="dash_p_filter")
             with col_f2:
-                secilen_birlik = st.selectbox("Birlik Filtresi", ["Tümü"] + BIRLIK_LISTESI, key="dash_b_filter")
+                secilen_birlik = st.selectbox("Birlik Filtresi", dash_birlikler, key="dash_b_filter")
 
             filtered_df = df.copy()
             if secilen_periyot != "Tümü":
@@ -383,7 +395,7 @@ elif choice == "📝 Veri Girişi & Geçmiş Veri Düzenleme":
                                         conn, params=(secilen_birlik, secilen_tim))
     
     if personel_df.empty:
-        st.warning("Seçilen birlikte kayıtlı personel bulunamadı.")
+        st.warning("⚠️ Seçilen birlikte kayıtlı personel bulunamadı. Lütfen önce Personel Yönetimi menüsünden personel ekleyin.")
     else:
         secilen_personel_id = st.selectbox("Personel Seçin", 
                                            options=personel_df["id"].tolist(), 
@@ -619,6 +631,7 @@ elif choice == "👤 Personel Yönetimi":
                     conn.commit()
                     st.rerun()
                 except sqlite3.IntegrityError:
+                    conn.rollback()
                     st.error("Bu PBİK veya Kullanıcı Adı zaten sistemde kayıtlı!")
             else:
                 st.warning("Lütfen PBİK ve Ad Soyad alanlarını doldurun.")
@@ -674,6 +687,7 @@ elif choice == "👤 Personel Yönetimi":
                         conn.commit()
                         st.success(f"'{sel_p['ad_soyad']}' için {y_role} yetkili hesabı başarıyla oluşturuldu.")
                     except sqlite3.IntegrityError:
+                        conn.rollback()
                         st.error("Bu kullanıcı adı zaten kullanılmaktadır!")
                 else:
                     st.warning("Lütfen kullanıcı adı ve şifre girin.")
@@ -719,6 +733,7 @@ elif choice == "👤 Personel Yönetimi":
                             st.success("Personel bilgileri başarıyla güncellendi!")
                             st.rerun()
                         except sqlite3.IntegrityError:
+                            conn.rollback()
                             st.error("Bu PBİK başka bir personele kayıtlı!")
                 with btn_col2:
                     confirm_delete = st.checkbox("Silme işlemini onaylıyorum", key=f"del_chk_{edit_p_id}")
@@ -955,7 +970,7 @@ elif choice == "📄 Sunum ve Rapor Alma":
                             p.alignment = PP_ALIGN.CENTER
 
                 # ------------------------------------
-                # SLAYT 4: GÖRSEL VE TEMİZ SÜTUN GRAFİKLERİ (MUMLAR KALDIRILDI)
+                # SLAYT 4: GÖRSEL VE TEMİZ SÜTUN GRAFİKLERİ
                 # ------------------------------------
                 slide4 = prs.slides.add_slide(blank_layout)
                 
