@@ -4,6 +4,7 @@ import pandas as pd
 import hashlib
 import datetime
 import io
+import os
 import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -14,7 +15,7 @@ from pptx.dml.color import RGBColor
 # 1. SAYFA YAPILANDIRMASI VE SABİTLER
 # ==========================================
 st.set_page_config(
-    page_title="Tabur Personel Performans Takip Sistemi",
+    page_title="Arnavutköy 5'inci J.Komd.Tb.K.liği - Performans Takip Sistemi",
     page_icon="🛡️",
     layout="wide"
 )
@@ -146,14 +147,19 @@ def login_user(username, password):
     return data
 
 if not st.session_state["logged_in"]:
-    st.title("🛡️ Tabur Personel Performans Takip Sistemi")
-    st.subheader("Giriş Paneli")
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
+    col_a, col_b, col_c = st.columns([1, 2, 1])
+    with col_b:
+        if os.path.exists("logo.png"):
+            st.image("logo.png", width=220)
+        else:
+            st.title("🛡️")
+        st.title("ARNAVUTKÖY 5'İNCİ J.KOMD.TB.K.LİĞİ")
+        st.subheader("Kasırgalar - Personel Performans Takip Sistemi")
+        st.write("---")
+        
         username = st.text_input("Kullanıcı Adı")
         password = st.text_input("Şifre", type='password')
-        if st.button("Giriş Yap", type="primary"):
+        if st.button("Giriş Yap", type="primary", use_container_width=True):
             user_data = login_user(username, password)
             if user_data:
                 st.session_state["logged_in"] = True
@@ -175,7 +181,11 @@ if not st.session_state["logged_in"]:
 user = st.session_state["user_info"]
 role = user["rol"]
 
-st.sidebar.title("🛡️ Tabur Takip Paneli")
+if os.path.exists("logo.png"):
+    st.sidebar.image("logo.png", width=140)
+
+st.sidebar.title("KASIRGALAR")
+st.sidebar.caption("5'inci J.Komd.Tb.K.lığı")
 st.sidebar.write(f"**Kullanıcı:** {user['username']}")
 st.sidebar.write(f"**Rol:** {role}")
 if user['birlik'] != "Tüm Tabur":
@@ -221,7 +231,7 @@ if role in ["Admin", "Reporter"]:
 if role == "Admin":
     menu_options.append("⚙️ Yönetici Paneli")
 
-if st.sidebar.button("Güvenli Çıkış"):
+if st.sidebar.button("Güvenli Çıkış", use_container_width=True):
     st.session_state["logged_in"] = False
     st.session_state["user_info"] = {}
     st.rerun()
@@ -303,7 +313,7 @@ if choice == "📊 Tabur Performans Dashboard":
             top10 = filtered_df.sort_values(by="Genel_Skor", ascending=False).head(10).copy()
             top10["3000m Koşu"] = top10["kosu_3000m_sn"].apply(format_kosu_saniye)
             
-            st.dataframe(top10[["tarih", "ad_soyad", "birlik", "tim", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
+            st.dataframe(top10[["tarih", "sicil_no", "rutbe", "ad_soyad", "birlik", "tim", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
 
         with dash_tab2:
             st.subheader("👤 Personel Bazlı Tarihsel Gelişim Grafiği")
@@ -782,7 +792,7 @@ elif choice == "📄 Sunum ve Rapor Alma":
         
         display_rep = report_df.copy()
         display_rep["3000m Koşu"] = display_rep["kosu_3000m_sn"].apply(format_kosu_saniye)
-        st.dataframe(display_rep[["PBİK", "ad_soyad", "rutbe", "birlik", "tim", "periyot", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
+        st.dataframe(display_rep[["PBİK", "rutbe", "ad_soyad", "birlik", "tim", "periyot", "tarih", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
 
         col_d1, col_d2 = st.columns(2)
 
@@ -793,18 +803,37 @@ elif choice == "📄 Sunum ve Rapor Alma":
                 prs.slide_height = Inches(7.5)
                 blank_layout = prs.slide_layouts[6]
 
+                min_tarih = report_df['tarih'].min() if not report_df.empty else "-"
+                max_tarih = report_df['tarih'].max() if not report_df.empty else "-"
+                tarih_araligi = f"{min_tarih} - {max_tarih}" if min_tarih != max_tarih else f"{min_tarih}"
+
+                # ------------------------------------
+                # SLAYT 1: KAPAK SLAYTI (KOMUTANLIK FORMATI)
+                # ------------------------------------
                 slide1 = prs.slides.add_slide(blank_layout)
-                title_box = slide1.shapes.add_textbox(Inches(1), Inches(2), Inches(11.333), Inches(3.5))
+                
+                if os.path.exists("logo.png"):
+                    slide1.shapes.add_picture("logo.png", Inches(1.2), Inches(1.8), width=Inches(3.2))
+
+                text_left = Inches(4.8) if os.path.exists("logo.png") else Inches(1.5)
+                text_width = Inches(7.5) if os.path.exists("logo.png") else Inches(10.333)
+
+                title_box = slide1.shapes.add_textbox(text_left, Inches(1.8), text_width, Inches(4.5))
                 tf1 = title_box.text_frame
                 tf1.word_wrap = True
                 
                 p1 = tf1.paragraphs[0]
-                p1.text = "🛡️ TABUR PERSONEL PERFORMANS SUNUMU"
-                p1.font.size = Pt(32)
+                p1.text = "ARNAVUTKÖY 5'İNCİ J.KOMD.TB.K.LİĞİ"
+                p1.font.size = Pt(28)
                 p1.font.bold = True
                 p1.font.color.rgb = RGBColor(30, 58, 138)
-                p1.alignment = PP_ALIGN.CENTER
                 
+                p_sub = tf1.add_paragraph()
+                p_sub.text = "KASIRGALAR TABURU PERFORMANS DEĞERLENDİRME SUNUMU\n"
+                p_sub.font.size = Pt(18)
+                p_sub.font.bold = True
+                p_sub.font.color.rgb = RGBColor(180, 83, 9)
+
                 kapsam_metni = f"{kapsam_tipi}"
                 if kapsam_tipi == "Belirli Bölük":
                     kapsam_metni += f" ({secilen_b})"
@@ -812,18 +841,73 @@ elif choice == "📄 Sunum ve Rapor Alma":
                     kapsam_metni += f" ({secilen_b} / {secilen_t})"
 
                 p2 = tf1.add_paragraph()
-                p2.text = f"\nKapsam: {kapsam_metni}\nPeriyot: {periyot_filtre}\nTarih: {datetime.date.today().strftime('%d.%m.%Y')}"
-                p2.font.size = Pt(20)
-                p2.font.color.rgb = RGBColor(71, 85, 105)
-                p2.alignment = PP_ALIGN.CENTER
+                p2.text = f"📍 Kapsam: {kapsam_metni}\n" \
+                          f"⏱️ Periyot: {periyot_filtre}\n" \
+                          f"📅 Veri Tarih Aralığı: {tarih_araligi}\n" \
+                          f"🗓️ Rapor Tarihi: {datetime.date.today().strftime('%d.%m.%Y')}"
+                p2.font.size = Pt(15)
+                p2.font.color.rgb = RGBColor(51, 65, 85)
 
+                # ------------------------------------
+                # SLAYT 2: TABUR GENEL İSTATİSTİKİ ÖZET
+                # ------------------------------------
                 slide2 = prs.slides.add_slide(blank_layout)
-                header_box2 = slide2.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
-                p_h2 = header_box2.text_frame.paragraphs[0]
-                p_h2.text = "📊 En Başarılı Personeller ve Performans Tablosu"
+                
+                h_box2 = slide2.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
+                p_h2 = h_box2.text_frame.paragraphs[0]
+                p_h2.text = "📊 Genel Performans İstatistik Özeti"
                 p_h2.font.size = Pt(24)
                 p_h2.font.bold = True
                 p_h2.font.color.rgb = RGBColor(30, 58, 138)
+
+                table_shape2 = slide2.shapes.add_table(2, 6, Inches(0.8), Inches(1.8), Inches(11.733), Inches(2.2))
+                t2 = table_shape2.table
+
+                headers2 = ["Toplam Kayıt", "Şınav (Ort.)", "Mekik (Ort.)", "Barfiks (Ort.)", "3000m Koşu (Ort.)", "Yazılı Notu (Ort.)"]
+                avg_kosu_sn = report_df['kosu_3000m_sn'].dropna().mean() if not report_df['kosu_3000m_sn'].dropna().empty else 0
+                
+                vals2 = [
+                    str(len(report_df)),
+                    f"{report_df['sinav'].mean():.1f}" if pd.notna(report_df['sinav'].mean()) else "-",
+                    f"{report_df['mekik'].mean():.1f}" if pd.notna(report_df['mekik'].mean()) else "-",
+                    f"{report_df['barfiks'].mean():.1f}" if pd.notna(report_df['barfiks'].mean()) else "-",
+                    format_kosu_saniye(avg_kosu_sn),
+                    f"{report_df['yazili_sinav'].mean():.1f}" if pd.notna(report_df['yazili_sinav'].mean()) else "-"
+                ]
+
+                for c_idx, text in enumerate(headers2):
+                    cell = t2.cell(0, c_idx)
+                    cell.text = text
+                    for p in cell.text_frame.paragraphs:
+                        p.font.bold = True
+                        p.font.size = Pt(13)
+                        p.font.color.rgb = RGBColor(255, 255, 255)
+                        p.alignment = PP_ALIGN.CENTER
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = RGBColor(30, 58, 138)
+
+                for c_idx, text in enumerate(vals2):
+                    cell = t2.cell(1, c_idx)
+                    cell.text = text
+                    for p in cell.text_frame.paragraphs:
+                        p.font.bold = True
+                        p.font.size = Pt(16)
+                        p.font.color.rgb = RGBColor(15, 23, 42)
+                        p.alignment = PP_ALIGN.CENTER
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = RGBColor(241, 245, 249)
+
+                # ------------------------------------
+                # SLAYT 3: EN YÜKSEK BAŞARI GÖSTEREN İLK 10 PERSONEL
+                # ------------------------------------
+                slide3 = prs.slides.add_slide(blank_layout)
+                
+                h_box3 = slide3.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
+                p_h3 = h_box3.text_frame.paragraphs[0]
+                p_h3.text = "🏆 En Yüksek Başarı Gösteren İlk 10 Personel Kaydı"
+                p_h3.font.size = Pt(22)
+                p_h3.font.bold = True
+                p_h3.font.color.rgb = RGBColor(30, 58, 138)
 
                 df_top = report_df.copy()
                 df_top["Genel_Skor"] = (
@@ -833,78 +917,94 @@ elif choice == "📄 Sunum ve Rapor Alma":
                     df_top["yazili_sinav"].fillna(0) - 
                     (df_top["kosu_3000m_sn"].fillna(1200) / 10)
                 )
-                df_top5 = df_top.sort_values(by="Genel_Skor", ascending=False).head(5)
+                df_top10 = df_top.sort_values(by="Genel_Skor", ascending=False).head(10)
 
-                rows, cols = len(df_top5) + 1, 7
-                table_shape = slide2.shapes.add_table(rows, cols, Inches(0.8), Inches(1.5), Inches(11.733), Inches(4.5))
-                table = table_shape.table
+                rows, cols = len(df_top10) + 1, 9
+                t3_shape = slide3.shapes.add_table(rows, cols, Inches(0.8), Inches(1.3), Inches(11.733), Inches(5.5))
+                t3 = t3_shape.table
 
-                headers = ["PBİK", "Ad Soyad", "Birlik", "Şınav", "Mekik", "Barfiks", "3000m Koşu"]
-                for c_idx, h_text in enumerate(headers):
-                    cell = table.cell(0, c_idx)
+                headers3 = ["Test Tarihi", "PBİK", "Rütbe", "Ad Soyad", "Birlik", "Şınav", "Mekik", "Barfiks", "3000m Koşu"]
+                for c_idx, h_text in enumerate(headers3):
+                    cell = t3.cell(0, c_idx)
                     cell.text = h_text
                     for p in cell.text_frame.paragraphs:
                         p.font.bold = True
-                        p.font.size = Pt(13)
+                        p.font.size = Pt(11)
                         p.font.color.rgb = RGBColor(255, 255, 255)
                         p.alignment = PP_ALIGN.CENTER
                     cell.fill.solid()
                     cell.fill.fore_color.rgb = RGBColor(30, 58, 138)
 
-                for r_idx, (_, r_data) in enumerate(df_top5.iterrows(), start=1):
+                for r_idx, (_, r_data) in enumerate(df_top10.iterrows(), start=1):
                     vals = [
-                        str(r_data["PBİK"]), str(r_data["ad_soyad"]), str(r_data["birlik"]),
+                        str(r_data["tarih"]),
+                        str(r_data["PBİK"]),
+                        str(r_data["rutbe"]),
+                        str(r_data["ad_soyad"]),
+                        str(r_data["birlik"]),
                         str(int(r_data["sinav"])) if pd.notna(r_data["sinav"]) else "-",
                         str(int(r_data["mekik"])) if pd.notna(r_data["mekik"]) else "-",
                         str(int(r_data["barfiks"])) if pd.notna(r_data["barfiks"]) else "-",
                         format_kosu_saniye(r_data["kosu_3000m_sn"])
                     ]
                     for c_idx, val in enumerate(vals):
-                        cell = table.cell(r_idx, c_idx)
+                        cell = t3.cell(r_idx, c_idx)
                         cell.text = val
                         for p in cell.text_frame.paragraphs:
-                            p.font.size = Pt(12)
+                            p.font.size = Pt(10)
                             p.alignment = PP_ALIGN.CENTER
 
-                slide3 = prs.slides.add_slide(blank_layout)
-                header_box3 = slide3.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
-                p_h3 = header_box3.text_frame.paragraphs[0]
-                p_h3.text = "📈 Grafiksel Performans ve Dağılım Analizi"
-                p_h3.font.size = Pt(24)
-                p_h3.font.bold = True
-                p_h3.font.color.rgb = RGBColor(30, 58, 138)
+                # ------------------------------------
+                # SLAYT 4: GÖRSEL VE TEMİZ SÜTUN GRAFİKLERİ (MUMLAR KALDIRILDI)
+                # ------------------------------------
+                slide4 = prs.slides.add_slide(blank_layout)
+                
+                h_box4 = slide4.shapes.add_textbox(Inches(0.8), Inches(0.4), Inches(11.733), Inches(0.8))
+                p_h4 = h_box4.text_frame.paragraphs[0]
+                p_h4.text = "📈 Bölük Bazlı Karşılaştırmalı Performans Grafiği"
+                p_h4.font.size = Pt(22)
+                p_h4.font.bold = True
+                p_h4.font.color.rgb = RGBColor(30, 58, 138)
 
                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.8))
-                plt.subplots_adjust(wspace=0.3)
+                plt.subplots_adjust(wspace=0.35)
 
-                grp = report_df.groupby("birlik")[["sinav", "mekik", "barfiks"]].mean()
-                if not grp.empty:
-                    grp.plot(kind="bar", ax=ax1, color=["#2563EB", "#16A34A", "#EA580C"])
-                    ax1.set_title("Bölük Bazlı Spor Ortalamaları", fontsize=11, fontweight="bold")
-                    ax1.set_ylabel("Tekrar")
-                    ax1.grid(axis="y", linestyle="--", alpha=0.6)
-                    ax1.tick_params(axis='x', rotation=20)
+                # Grafik 1: Spor Ortalamaları
+                grp_spor = report_df.groupby("birlik")[["sinav", "mekik", "barfiks"]].mean()
+                if not grp_spor.empty:
+                    grp_spor.plot(kind="bar", ax=ax1, color=["#1E3A8A", "#16A34A", "#D97706"], width=0.8)
+                    ax1.set_title("Bölük Bazlı Spor Ortalamaları (Tekrar)", fontsize=11, fontweight="bold", pad=10)
+                    ax1.set_ylabel("Tekrar Sayısı")
+                    ax1.grid(axis="y", linestyle="--", alpha=0.5)
+                    ax1.tick_params(axis='x', rotation=15)
+                    
+                    for p in ax1.patches:
+                        height = p.get_height()
+                        if height > 0:
+                            ax1.annotate(f"{height:.1f}", (p.get_x() + p.get_width() / 2., height),
+                                         ha='center', va='bottom', fontsize=8, xytext=(0, 2), textcoords='offset points')
 
-                data_box = [
-                    report_df["sinav"].dropna(),
-                    report_df["mekik"].dropna(),
-                    report_df["barfiks"].dropna(),
-                    report_df["yazili_sinav"].dropna()
-                ]
-                if any(len(d) > 0 for d in data_box):
-                    bp = ax2.boxplot([d for d in data_box if len(d)>0], patch_artist=True)
-                    colors = ['#93C5FD', '#86EFAC', '#FDBA74', '#FCA5A5']
-                    for patch, color in zip(bp['boxes'], colors[:len(bp['boxes'])]):
-                        patch.set_facecolor(color)
-                    ax2.set_title("Performans Dağılımı (Mum / Boxplot)", fontsize=11, fontweight="bold")
-                    ax2.grid(axis="y", linestyle="--", alpha=0.6)
+                # Grafik 2: Yazılı Sınav Ortalamaları
+                grp_yazili = report_df.groupby("birlik")["yazili_sinav"].mean()
+                if not grp_yazili.empty:
+                    bars = ax2.bar(grp_yazili.index, grp_yazili.values, color="#2563EB", width=0.5)
+                    ax2.set_title("Bölük Bazlı Yazılı Sınav Ortalamaları (Puan)", fontsize=11, fontweight="bold", pad=10)
+                    ax2.set_ylabel("Sınav Notu (0-100)")
+                    ax2.set_ylim(0, 105)
+                    ax2.grid(axis="y", linestyle="--", alpha=0.5)
+                    ax2.tick_params(axis='x', rotation=15)
+                    
+                    for bar in bars:
+                        yval = bar.get_height()
+                        if pd.notna(yval) and yval > 0:
+                            ax2.text(bar.get_x() + bar.get_width()/2.0, yval + 1, f"{yval:.1f}", ha='center', va='bottom', fontsize=9, fontweight='bold')
 
                 img_buf = io.BytesIO()
-                plt.savefig(img_buf, format="png", dpi=150, bbox_inches="tight")
+                plt.savefig(img_buf, format="png", dpi=200, bbox_inches="tight")
                 plt.close(fig)
                 img_buf.seek(0)
 
-                slide3.shapes.add_picture(img_buf, Inches(0.8), Inches(1.3), width=Inches(11.733))
+                slide4.shapes.add_picture(img_buf, Inches(0.8), Inches(1.3), width=Inches(11.733))
 
                 pptx_out = io.BytesIO()
                 prs.save(pptx_out)
@@ -913,9 +1013,9 @@ elif choice == "📄 Sunum ve Rapor Alma":
 
             pptx_file = create_pptx()
             st.download_button(
-                label="🖥️ Profesyonel PowerPoint Sunumunu İndir (.pptx)",
+                label="🖥️ Komutanlık PowerPoint Sunumunu İndir (.pptx)",
                 data=pptx_file,
-                file_name=f"Tabur_Performans_Sunumu_{datetime.date.today()}.pptx",
+                file_name=f"Kasirgalar_Tabur_Performans_Sunumu_{datetime.date.today()}.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 type="primary"
             )
@@ -931,7 +1031,7 @@ elif choice == "📄 Sunum ve Rapor Alma":
             st.download_button(
                 label="📊 Detaylı Excel Raporunu İndir (.xlsx)",
                 data=excel_buf,
-                file_name=f"Tabur_Performans_Raporu_{datetime.date.today()}.xlsx",
+                file_name=f"Kasirgalar_Tabur_Performans_Raporu_{datetime.date.today()}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
