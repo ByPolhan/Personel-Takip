@@ -23,7 +23,7 @@ BIRLIK_LISTESI = [
     "4. Bölük"
 ]
 
-TIM_LISTESI = ["1. Tim", "2. Tim", "3. Tim", "4. Tim"]
+TIM_LISTESI = ["Bölük Karargahı", "1. Tim", "2. Tim", "3. Tim", "4. Tim"]
 
 RUTBE_LISTESI = [
     "Subay",
@@ -243,7 +243,13 @@ if choice == "📊 Tabur Performans Dashboard":
             st.bar_chart(kosu_grp)
 
         st.subheader("🎖️ En Yüksek Başarı Gösteren İlk 10 Personel")
-        df["Genel_Skor"] = df["sinav"] + df["mekik"] + (df["barfiks"] * 2) + df["yazili_sinav"] - (df["kosu_3000m"] * 2)
+        df["Genel_Skor"] = (
+            df["sinav"].fillna(0) + 
+            df["mekik"].fillna(0) + 
+            (df["barfiks"].fillna(0) * 2) + 
+            df["yazili_sinav"].fillna(0) - 
+            (df["kosu_3000m"].fillna(0) * 2)
+        )
         top10 = df.sort_values(by="Genel_Skor", ascending=False).head(10)
         st.dataframe(top10[["ad_soyad", "birlik", "tim", "sinav", "mekik", "barfiks", "kosu_3000m", "yazili_sinav"]], use_container_width=True)
 
@@ -276,7 +282,7 @@ elif choice == "📝 Veri Girişi":
                 allowed_timler = [user["tim"]]
             else:
                 allowed_timler = TIM_LISTESI
-            secilen_tim = st.selectbox("Tim", allowed_timler)
+            secilen_tim = st.selectbox("Tim / Unvan", allowed_timler)
 
     with col3:
         secilen_periyot = st.selectbox("Periyot", PERIYOTLAR)
@@ -297,25 +303,40 @@ elif choice == "📝 Veri Girişi":
                                            options=personel_df["id"].tolist(), 
                                            format_func=lambda x: f"{personel_df[personel_df['id']==x]['sicil_no'].values[0]} - {personel_df[personel_df['id']==x]['ad_soyad'].values[0]}")
         
-        st.subheader("📋 Test ve Performans Değerleri")
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            sinav = st.number_input("Şınav (Tekrar)", min_value=0, max_value=200, value=30)
-            mekik = st.number_input("Mekik (Tekrar)", min_value=0, max_value=200, value=35)
-        with c2:
-            barfiks = st.number_input("Barfiks (Tekrar)", min_value=0, max_value=100, value=10)
-            kosu = st.number_input("3.000 Metre Koşu (Dakika.Saniye - Örn: 13.5)", min_value=0.0, max_value=60.0, value=14.0, step=0.1)
-        with c3:
-            yazili = st.number_input("Yazılı Sınav Notu (0 - 100)", min_value=0.0, max_value=100.0, value=75.0)
+        st.divider()
+        tab_spor, tab_yazili = st.tabs(["🏃‍♂️ Spor Testi Girişi", "📝 Yazılı Sınav Girişi"])
 
-        if st.button("Kaydet", type="primary"):
-            cur = conn.cursor()
-            cur.execute('''INSERT INTO performans 
-                          (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m, yazili_sinav, kaydeden)
-                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                       (secilen_personel_id, str(tarih), secilen_periyot, sinav, mekik, barfiks, kosu, yazili, user["username"]))
-            conn.commit()
-            st.success("Performans verisi başarıyla kaydedildi!")
+        with tab_spor:
+            st.subheader("🏃‍♂️ Fiziki Yeterlilik ve Spor Testi")
+            c1, c2 = st.columns(2)
+            with c1:
+                sinav = st.number_input("Şınav (Tekrar)", min_value=0, max_value=200, value=30, key="spor_sinav")
+                mekik = st.number_input("Mekik (Tekrar)", min_value=0, max_value=200, value=35, key="spor_mekik")
+            with c2:
+                barfiks = st.number_input("Barfiks (Tekrar)", min_value=0, max_value=100, value=10, key="spor_barfiks")
+                kosu = st.number_input("3.000 Metre Koşu (Dakika.Saniye - Örn: 13.5)", min_value=0.0, max_value=60.0, value=14.0, step=0.1, key="spor_kosu")
+
+            if st.button("Spor Testini Kaydet", type="primary", key="btn_spor"):
+                cur = conn.cursor()
+                cur.execute('''INSERT INTO performans 
+                              (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m, yazili_sinav, kaydeden)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                           (secilen_personel_id, str(tarih), secilen_periyot, sinav, mekik, barfiks, kosu, None, user["username"]))
+                conn.commit()
+                st.success("Spor testi verileri başarıyla kaydedildi!")
+
+        with tab_yazili:
+            st.subheader("📝 Yazılı Sınav Notu Girişi")
+            yazili = st.number_input("Yazılı Sınav Notu (0 - 100)", min_value=0.0, max_value=100.0, value=75.0, key="yazili_not")
+
+            if st.button("Yazılı Sınav Notunu Kaydet", type="primary", key="btn_yazili"):
+                cur = conn.cursor()
+                cur.execute('''INSERT INTO performans 
+                              (personel_id, tarih, periyot, sinav, mekik, barfiks, kosu_3000m, yazili_sinav, kaydeden)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                           (secilen_personel_id, str(tarih), secilen_periyot, None, None, None, None, yazili, user["username"]))
+                conn.commit()
+                st.success("Yazılı sınav notu başarıyla kaydedildi!")
     
     conn.close()
 
@@ -341,7 +362,7 @@ elif choice == "👤 Personel Yönetimi":
 
         col1, col2 = st.columns(2)
         with col1:
-            sicil_no = st.text_input("Sicil / T.C. No")
+            sicil_no = st.text_input("PBİK")
             ad_soyad = st.text_input("Ad Soyad")
             rutbe = st.selectbox("Rütbe Seçin", RUTBE_LISTESI)
         with col2:
@@ -355,13 +376,13 @@ elif choice == "👤 Personel Yönetimi":
                     p_timler = [user["tim"]]
                 else:
                     p_timler = TIM_LISTESI
-                p_tim = st.selectbox("Atandığı Tim", p_timler)
+                p_tim = st.selectbox("Atandığı Tim / Unvan", p_timler)
 
         st.divider()
         yetki_ver = st.checkbox("🔑 Bu personele sisteme giriş / veri giriş yetkisi (Kullanıcı Hesabı) tanımla")
         
         if yetki_ver:
-            st.info(f"Sisteme giriş hesabı açılıyor. Birlik: **{p_birlik}**, Tim: **{p_tim}** olarak atanacaktır.")
+            st.info(f"Sisteme giriş hesabı açılıyor. Birlik: **{p_birlik}**, Tim/Unvan: **{p_tim}** olarak atanacaktır.")
             u_col1, u_col2 = st.columns(2)
             with u_col1:
                 new_username = st.text_input("Kullanıcı Adı (Sisteme Giriş)", value=sicil_no if sicil_no else "")
@@ -389,25 +410,25 @@ elif choice == "👤 Personel Yönetimi":
                     
                     conn.commit()
                 except sqlite3.IntegrityError:
-                    st.error("Bu Sicil/T.C. No veya Kullanıcı Adı zaten sistemde kayıtlı!")
+                    st.error("Bu PBİK veya Kullanıcı Adı zaten sistemde kayıtlı!")
             else:
-                st.warning("Lütfen Sicil ve Ad Soyad alanlarını doldurun.")
+                st.warning("Lütfen PBİK ve Ad Soyad alanlarını doldurun.")
 
     with tab2:
         st.subheader("Mevcut Personel Listesi")
-        p_df = pd.read_sql_query("SELECT sicil_no, ad_soyad, rutbe, birlik, tim FROM personel", conn)
+        p_df = pd.read_sql_query("SELECT sicil_no AS PBİK, ad_soyad AS Ad_Soyad, rutbe AS Rütbe, birlik AS Birlik, tim AS Tim FROM personel", conn)
         
         if role == "Destek Takım Komutanı":
-            p_df = p_df[p_df["birlik"] == "Destek Bölüğü"]
+            p_df = p_df[p_df["Birlik"] == "Destek Bölüğü"]
         elif role == "Bölük Yetkilisi":
-            p_df = p_df[p_df["birlik"] == user["birlik"]]
+            p_df = p_df[p_df["Birlik"] == user["birlik"]]
         elif role == "Tim Komutanı":
-            p_df = p_df[(p_df["birlik"] == user["birlik"]) & (p_df["tim"] == user["tim"])]
+            p_df = p_df[(p_df["Birlik"] == user["birlik"]) & (p_df["Tim"] == user["tim"])]
 
         st.dataframe(p_df, use_container_width=True)
 
     with tab3:
-        st.subheader("Mevcut Personeli Veri Giriş Yetkilisi (Kullanıcı) Yap")
+        st.subheader("Mevcut Personele Veri Giriş Yetkilisi (Kullanıcı) Yap")
         p_df_all = pd.read_sql_query("SELECT id, sicil_no, ad_soyad, rutbe, birlik, tim FROM personel", conn)
         
         if role == "Destek Takım Komutanı":
@@ -459,7 +480,7 @@ elif choice == "📄 Sunum ve Rapor Alma":
 
     conn = get_db()
     query = '''
-        SELECT p.tarih, p.periyot, per.sicil_no, per.ad_soyad, per.rutbe, per.birlik, per.tim,
+        SELECT p.tarih, p.periyot, per.sicil_no AS PBİK, per.ad_soyad, per.rutbe, per.birlik, per.tim,
                p.sinav, p.mekik, p.barfiks, p.kosu_3000m, p.yazili_sinav, p.kaydeden
         FROM performans p
         JOIN personel per ON p.personel_id = per.id
