@@ -210,7 +210,7 @@ menu_options = []
 if role in ["Admin", "Destek Takım Komutanı", "Bölük Yetkilisi", "Tim Komutanı"]:
     menu_options.append("📊 Tabur Performans Dashboard")
 
-menu_options.append("📝 Veri Girişi")
+menu_options.append("📝 Veri Girişi & Geçmiş Veri Düzenleme")
 
 if role in ["Admin", "Destek Takım Komutanı", "Bölük Yetkilisi", "Tim Komutanı"]:
     menu_options.append("👤 Personel Yönetimi")
@@ -236,7 +236,7 @@ if choice == "📊 Tabur Performans Dashboard":
     
     conn = get_db()
     query = '''
-        SELECT p.tarih, p.periyot, per.sicil_no, per.ad_soyad, per.birlik, per.tim,
+        SELECT p.id AS perf_id, p.tarih, p.periyot, per.id AS personel_id, per.sicil_no, per.ad_soyad, per.rutbe, per.birlik, per.tim,
                p.sinav, p.mekik, p.barfiks, p.kosu_3000m_sn, p.yazili_sinav
         FROM performans p
         JOIN personel per ON p.personel_id = per.id
@@ -254,58 +254,86 @@ if choice == "📊 Tabur Performans Dashboard":
         elif role == "Tim Komutanı":
             df = df[(df["birlik"] == user["birlik"]) & (df["tim"] == user["tim"])]
 
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            secilen_periyot = st.selectbox("Periyot Seçin", ["Tümü"] + PERIYOTLAR)
-        with col_f2:
-            secilen_birlik = st.selectbox("Birlik Filtresi", ["Tümü"] + BIRLIK_LISTESI)
+        dash_tab1, dash_tab2 = st.tabs(["📊 Genellik & Sıralama", "📈 Personel Bireysel Geçmiş Takibi"])
 
-        if secilen_periyot != "Tümü":
-            df = df[df["periyot"] == secilen_periyot]
-        if secilen_birlik != "Tümü":
-            df = df[df["birlik"] == secilen_birlik]
+        with dash_tab1:
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                secilen_periyot = st.selectbox("Periyot Seçin", ["Tümü"] + PERIYOTLAR, key="dash_p_filter")
+            with col_f2:
+                secilen_birlik = st.selectbox("Birlik Filtresi", ["Tümü"] + BIRLIK_LISTESI, key="dash_b_filter")
 
-        st.subheader("📈 Genel Ortalamalar")
-        m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("Şınav (Ort.)", f"{df['sinav'].mean():.1f}")
-        m2.metric("Mekik (Ort.)", f"{df['mekik'].mean():.1f}")
-        m3.metric("Barfiks (Ort.)", f"{df['barfiks'].mean():.1f}")
-        
-        avg_kosu_sn = df['kosu_3000m_sn'].dropna().mean() if not df['kosu_3000m_sn'].dropna().empty else 0
-        m4.metric("3000m Koşu (Ort.)", format_kosu_saniye(avg_kosu_sn))
-        m5.metric("Yazılı Sınav (Ort.)", f"{df['yazili_sinav'].mean():.1f}")
+            filtered_df = df.copy()
+            if secilen_periyot != "Tümü":
+                filtered_df = filtered_df[filtered_df["periyot"] == secilen_periyot]
+            if secilen_birlik != "Tümü":
+                filtered_df = filtered_df[filtered_df["birlik"] == secilen_birlik]
 
-        st.divider()
+            st.subheader("📈 Genel Ortalamalar")
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("Şınav (Ort.)", f"{filtered_df['sinav'].mean():.1f}" if not filtered_df['sinav'].dropna().empty else "0")
+            m2.metric("Mekik (Ort.)", f"{filtered_df['mekik'].mean():.1f}" if not filtered_df['mekik'].dropna().empty else "0")
+            m3.metric("Barfiks (Ort.)", f"{filtered_df['barfiks'].mean():.1f}" if not filtered_df['barfiks'].dropna().empty else "0")
+            
+            avg_kosu_sn = filtered_df['kosu_3000m_sn'].dropna().mean() if not filtered_df['kosu_3000m_sn'].dropna().empty else 0
+            m4.metric("3000m Koşu (Ort.)", format_kosu_saniye(avg_kosu_sn))
+            m5.metric("Yazılı Sınav (Ort.)", f"{filtered_df['yazili_sinav'].mean():.1f}" if not filtered_df['yazili_sinav'].dropna().empty else "0")
 
-        col_g1, col_g2 = st.columns(2)
-        with col_g1:
-            st.subheader("🏆 Bölük Bazlı Genel Başarı Ortalamaları")
-            boluk_grp = df.groupby("birlik")[["sinav", "mekik", "barfiks", "yazili_sinav"]].mean()
-            st.bar_chart(boluk_grp)
+            st.divider()
 
-        with col_g2:
-            st.subheader("🏃‍♂️ Bölük Bazlı 3000m Koşu Ortalamaları (Saniye)")
-            kosu_grp = df.groupby("birlik")["kosu_3000m_sn"].mean()
-            st.bar_chart(kosu_grp)
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                st.subheader("🏆 Bölük Bazlı Genel Başarı Ortalamaları")
+                boluk_grp = filtered_df.groupby("birlik")[["sinav", "mekik", "barfiks", "yazili_sinav"]].mean()
+                st.bar_chart(boluk_grp)
 
-        st.subheader("🎖️ En Yüksek Başarı Gösteren İlk 10 Personel")
-        df["Genel_Skor"] = (
-            df["sinav"].fillna(0) + 
-            df["mekik"].fillna(0) + 
-            (df["barfiks"].fillna(0) * 2) + 
-            df["yazili_sinav"].fillna(0) - 
-            (df["kosu_3000m_sn"].fillna(1200) / 10)
-        )
-        top10 = df.sort_values(by="Genel_Skor", ascending=False).head(10).copy()
-        top10["3000m Koşu"] = top10["kosu_3000m_sn"].apply(format_kosu_saniye)
-        
-        st.dataframe(top10[["ad_soyad", "birlik", "tim", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
+            with col_g2:
+                st.subheader("🏃‍♂️ Bölük Bazlı 3000m Koşu Ortalamaları (Saniye)")
+                kosu_grp = filtered_df.groupby("birlik")["kosu_3000m_sn"].mean()
+                st.bar_chart(kosu_grp)
+
+            st.subheader("🎖️ En Yüksek Başarı Gösteren İlk 10 Personel Kaydı")
+            filtered_df["Genel_Skor"] = (
+                filtered_df["sinav"].fillna(0) + 
+                filtered_df["mekik"].fillna(0) + 
+                (filtered_df["barfiks"].fillna(0) * 2) + 
+                filtered_df["yazili_sinav"].fillna(0) - 
+                (filtered_df["kosu_3000m_sn"].fillna(1200) / 10)
+            )
+            top10 = filtered_df.sort_values(by="Genel_Skor", ascending=False).head(10).copy()
+            top10["3000m Koşu"] = top10["kosu_3000m_sn"].apply(format_kosu_saniye)
+            
+            st.dataframe(top10[["tarih", "ad_soyad", "birlik", "tim", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
+
+        with dash_tab2:
+            st.subheader("👤 Personel Bazlı Tarihsel Gelişim Grafiği")
+            unique_personel = df[["personel_id", "sicil_no", "rutbe", "ad_soyad"]].drop_duplicates()
+            
+            selected_p_hist_id = st.selectbox(
+                "Tarihsel Gelişimini İncelemek İstediğiniz Personeli Seçin",
+                options=unique_personel["personel_id"].tolist(),
+                format_func=lambda x: f"{unique_personel[unique_personel['personel_id']==x]['sicil_no'].values[0]} - {unique_personel[unique_personel['personel_id']==x]['rutbe'].values[0]} {unique_personel[unique_personel['personel_id']==x]['ad_soyad'].values[0]}",
+                key="select_p_hist_dash"
+            )
+
+            p_hist_df = df[df["personel_id"] == selected_p_hist_id].sort_values(by="tarih").copy()
+
+            if p_hist_df.empty:
+                st.info("Seçilen personele ait veri bulunamadı.")
+            else:
+                p_hist_df["3000m Koşu"] = p_hist_df["kosu_3000m_sn"].apply(format_kosu_saniye)
+                st.write("**📜 Personelin Tarihsel Kayıt Listesi**")
+                st.dataframe(p_hist_df[["tarih", "periyot", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav"]], use_container_width=True)
+
+                st.write("**📈 Zaman İçindeki Değişim Grafiği**")
+                chart_df = p_hist_df.set_index("tarih")[["sinav", "mekik", "barfiks", "yazili_sinav"]]
+                st.line_chart(chart_df)
 
 # ==========================================
-# MENÜ 2: VERİ GİRİŞİ
+# MENÜ 2: VERİ GİRİŞİ VE GEÇMİŞ DÜZENLEME
 # ==========================================
-elif choice == "📝 Veri Girişi":
-    st.header("📝 Performans Veri Girişi")
+elif choice == "📝 Veri Girişi & Geçmiş Veri Düzenleme":
+    st.header("📝 Performans Veri Girişi & Geçmiş Veri Düzenleme")
 
     conn = get_db()
     
@@ -319,7 +347,7 @@ elif choice == "📝 Veri Girişi":
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        secilen_birlik = st.selectbox("Birlik", allowed_birlikler)
+        secilen_birlik = st.selectbox("Birlik", allowed_birlikler, key="vg_birlik")
     
     with col2:
         if secilen_birlik in ["Karargah", "Destek Bölüğü"]:
@@ -332,10 +360,10 @@ elif choice == "📝 Veri Girişi":
                 allowed_timler = [user["tim"]]
             else:
                 allowed_timler = TIM_LISTESI
-            secilen_tim = st.selectbox("Tim / Unvan", allowed_timler)
+            secilen_tim = st.selectbox("Tim / Unvan", allowed_timler, key="vg_tim")
 
     with col3:
-        secilen_periyot = st.selectbox("Periyot", PERIYOTLAR)
+        secilen_periyot = st.selectbox("Periyot", PERIYOTLAR, key="vg_periyot")
 
     if secilen_birlik in ["Karargah", "Destek Bölüğü"]:
         personel_df = pd.read_sql_query("SELECT id, sicil_no, ad_soyad FROM personel WHERE birlik=?", 
@@ -349,10 +377,11 @@ elif choice == "📝 Veri Girişi":
     else:
         secilen_personel_id = st.selectbox("Personel Seçin", 
                                            options=personel_df["id"].tolist(), 
-                                           format_func=lambda x: f"{personel_df[personel_df['id']==x]['sicil_no'].values[0]} - {personel_df[personel_df['id']==x]['ad_soyad'].values[0]}")
+                                           format_func=lambda x: f"{personel_df[personel_df['id']==x]['sicil_no'].values[0]} - {personel_df[personel_df['id']==x]['ad_soyad'].values[0]}",
+                                           key="vg_personel_select")
         
         st.divider()
-        tab_spor, tab_yazili = st.tabs(["🏃‍♂️ Spor Testi Girişi", "📝 Yazılı Sınav Girişi"])
+        tab_spor, tab_yazili, tab_gecmis = st.tabs(["🏃‍♂️ Yeni Spor Testi Girişi", "📝 Yeni Yazılı Sınav Girişi", "📜 Geçmiş Kayıtlar & Düzenle / Sil"])
 
         with tab_spor:
             st.subheader("🏃‍♂️ Fiziki Yeterlilik ve Spor Testi")
@@ -392,6 +421,7 @@ elif choice == "📝 Veri Girişi":
                                (secilen_personel_id, str(spor_tarih), secilen_periyot, sinav, mekik, barfiks, toplam_kosu_saniye, None, user["username"]))
                 conn.commit()
                 st.success(f"Spor testi verileri ({kosu_dk:02d}:{kosu_sn:02d}) başarıyla kaydedildi/güncellendi!")
+                st.rerun()
 
         with tab_yazili:
             st.subheader("📝 Yazılı Sınav Notu Girişi")
@@ -416,6 +446,92 @@ elif choice == "📝 Veri Girişi":
                                (secilen_personel_id, str(yazili_tarih), secilen_periyot, None, None, None, None, yazili, user["username"]))
                 conn.commit()
                 st.success("Yazılı sınav notu başarıyla kaydedildi/güncellendi!")
+                st.rerun()
+
+        with tab_gecmis:
+            st.subheader("📜 Seçilen Personelin Geçmiş Performans Kayıtları")
+            
+            perf_df = pd.read_sql_query('''
+                SELECT p.id, p.tarih, p.periyot, p.sinav, p.mekik, p.barfiks,
+                       p.kosu_3000m_sn, p.yazili_sinav, p.kaydeden
+                FROM performans p
+                WHERE p.personel_id = ?
+                ORDER BY p.tarih DESC, p.id DESC
+            ''', conn, params=(secilen_personel_id,))
+
+            if perf_df.empty:
+                st.info("Bu personele ait daha önce girilmiş bir performans kaydı bulunmamaktadır.")
+            else:
+                display_p = perf_df.copy()
+                display_p["3000m Koşu"] = display_p["kosu_3000m_sn"].apply(format_kosu_saniye)
+                display_p_view = display_p[["tarih", "periyot", "sinav", "mekik", "barfiks", "3000m Koşu", "yazili_sinav", "kaydeden"]]
+                display_p_view.columns = ["Tarih", "Periyot", "Şınav", "Mekik", "Barfiks", "3000m Koşu", "Yazılı Notu", "Kaydeden"]
+                st.dataframe(display_p_view, use_container_width=True)
+
+                st.divider()
+                st.subheader("✏️ Geçmiş Kayıt Düzenle veya Sil")
+
+                record_id = st.selectbox(
+                    "Düzenlenecek / Silinecek Performans Kaydını Seçin",
+                    options=perf_df["id"].tolist(),
+                    format_func=lambda x: f"Tarih: {perf_df[perf_df['id']==x]['tarih'].values[0]} | Periyot: {perf_df[perf_df['id']==x]['periyot'].values[0]} | Kaydeden: {perf_df[perf_df['id']==x]['kaydeden'].values[0]}",
+                    key="select_perf_record"
+                )
+
+                rec = perf_df[perf_df['id'] == record_id].iloc[0]
+
+                col_e1, col_e2 = st.columns(2)
+                with col_e1:
+                    try:
+                        parsed_date = datetime.datetime.strptime(str(rec['tarih']), "%Y-%m-%d").date()
+                    except:
+                        parsed_date = datetime.date.today()
+
+                    edit_tarih = st.date_input("Kayıt Tarihi", parsed_date, key=f"rec_tarih_{record_id}")
+                    edit_periyot = st.selectbox("Periyot", PERIYOTLAR, index=PERIYOTLAR.index(rec['periyot']) if rec['periyot'] in PERIYOTLAR else 0, key=f"rec_periyot_{record_id}")
+                    edit_sinav = st.number_input("Şınav (Tekrar)", min_value=0, max_value=200, value=int(rec['sinav']) if pd.notna(rec['sinav']) else 0, key=f"rec_sinav_{record_id}")
+                    edit_mekik = st.number_input("Mekik (Tekrar)", min_value=0, max_value=200, value=int(rec['mekik']) if pd.notna(rec['mekik']) else 0, key=f"rec_mekik_{record_id}")
+
+                with col_e2:
+                    edit_barfiks = st.number_input("Barfiks (Tekrar)", min_value=0, max_value=100, value=int(rec['barfiks']) if pd.notna(rec['barfiks']) else 0, key=f"rec_barfiks_{record_id}")
+                    
+                    curr_sn = int(rec['kosu_3000m_sn']) if pd.notna(rec['kosu_3000m_sn']) else 0
+                    c_dk = curr_sn // 60
+                    c_sn = curr_sn % 60
+                    
+                    st.write("**3.000 Metre Koşu Süresi**")
+                    e_k_col1, e_k_col2 = st.columns(2)
+                    with e_k_col1:
+                        edit_kosu_dk = st.number_input("Dakika", min_value=0, max_value=60, value=c_dk, key=f"rec_kdk_{record_id}")
+                    with e_k_col2:
+                        edit_kosu_sn = st.number_input("Saniye", min_value=0, max_value=59, value=c_sn, key=f"rec_ksn_{record_id}")
+                    
+                    edit_yazili = st.number_input("Yazılı Sınav Notu (0-100)", min_value=0.0, max_value=100.0, value=float(rec['yazili_sinav']) if pd.notna(rec['yazili_sinav']) else 0.0, key=f"rec_yazili_{record_id}")
+
+                btn_p1, btn_p2 = st.columns(2)
+                with btn_p1:
+                    if st.button("Kaydı Güncelle", type="primary", key=f"btn_upd_perf_{record_id}"):
+                        tot_sn = (edit_kosu_dk * 60) + edit_kosu_sn
+                        cur = conn.cursor()
+                        cur.execute('''UPDATE performans 
+                                       SET tarih=?, periyot=?, sinav=?, mekik=?, barfiks=?, kosu_3000m_sn=?, yazili_sinav=?, kaydeden=?
+                                       WHERE id=?''',
+                                    (str(edit_tarih), edit_periyot, edit_sinav, edit_mekik, edit_barfiks, tot_sn, edit_yazili, user["username"], record_id))
+                        conn.commit()
+                        st.success("Performans kaydı başarıyla güncellendi!")
+                        st.rerun()
+
+                with btn_p2:
+                    chk_del_p = st.checkbox("Bu geçmiş kaydı tamamen silmeyi onaylıyorum", key=f"chk_del_p_{record_id}")
+                    if st.button("Kaydı Sil", type="secondary", key=f"btn_del_perf_{record_id}"):
+                        if chk_del_p:
+                            cur = conn.cursor()
+                            cur.execute("DELETE FROM performans WHERE id=?", (record_id,))
+                            conn.commit()
+                            st.warning("Performans kaydı silindi!")
+                            st.rerun()
+                        else:
+                            st.error("Lütfen önce silme onay kutusunu işaretleyin.")
     
     conn.close()
 
@@ -820,7 +936,7 @@ elif choice == "📄 Sunum ve Rapor Alma":
             )
 
 # ==========================================
-# MENÜ 5: YÖNETİCİ PANELİ (GÜNCELLENDİ)
+# MENÜ 5: YÖNETİCİ PANELİ
 # ==========================================
 elif choice == "⚙️ Yönetici Paneli":
     st.header("⚙️ Yönetici Paneli - Kullanıcı Hesabı Yönetimi")
@@ -858,7 +974,6 @@ elif choice == "⚙️ Yönetici Paneli":
         st.subheader("🗑️ Yetkili Kullanıcı Hesabını Sil")
         st.caption("Not: Buradan sildiğiniz kullanıcı hesaplarının sisteme giriş yetkisi tamamen kaldırılır. Ana 'admin' hesabı ve aktif olarak oturum açtığınız kendi hesabınız silinemez.")
 
-        # Ana admin ve oturum acan kendi kullanicisini silme listesinden haric tut
         deletable_users = users_df[~users_df["kullanici_adi"].isin(["admin", user["username"]])]
 
         if deletable_users.empty:
